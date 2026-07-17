@@ -1,0 +1,185 @@
+/* SmartClinic — login / registro */
+.auth-body {
+  min-height: 100vh;
+  background: linear-gradient(140deg, var(--sc-blue-900) 0%, var(--sc-blue-700) 55%, var(--sc-blue-500) 100%);
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,.06) 1px, transparent 1px);
+  background-size: 36px 36px;
+  pointer-events: none;
+}
+
+.auth-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  background: var(--sc-white);
+  border-radius: var(--sc-radius-xl);
+  box-shadow: var(--sc-shadow-lg);
+  padding: 36px 32px 32px;
+}
+
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 28px;
+  text-decoration: none;
+  color: inherit;
+  gap: 8px;
+}
+
+.auth-brand-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-brand-icon {
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.auth-brand-name {
+  font-family: var(--sc-font);
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--sc-blue-900);
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.auth-brand-accent {
+  color: var(--sc-blue-500);
+}
+
+.auth-brand-tag {
+  font-family: var(--sc-font);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sc-gray-500);
+}
+
+.auth-card h1 {
+  font-family: var(--sc-font);
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--sc-gray-900);
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.auth-form .form-group {
+  margin-bottom: 18px;
+}
+
+.auth-form label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sc-gray-700);
+  margin-bottom: 6px;
+}
+
+.auth-form .input {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: var(--sc-font);
+  font-size: 14px;
+  border: 1.5px solid var(--sc-gray-300);
+  border-radius: var(--sc-radius-md);
+  background: var(--sc-white);
+  color: var(--sc-gray-900);
+  transition: border-color var(--sc-transition), box-shadow var(--sc-transition);
+}
+
+.auth-form .input:focus {
+  outline: none;
+  border-color: var(--sc-blue-500);
+  box-shadow: 0 0 0 3px rgba(1, 141, 236, .15);
+}
+
+.auth-form .error {
+  font-size: 12px;
+  color: var(--sc-danger);
+  margin-top: 6px;
+}
+
+.auth-form .general-error {
+  background: #fdecea;
+  border-radius: var(--sc-radius-md);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+
+.auth-form .actions {
+  margin-top: 8px;
+}
+
+.auth-form .btn-primary {
+  width: 100%;
+  padding: 13px 20px;
+  font-family: var(--sc-font);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--sc-white);
+  background: var(--sc-blue-900);
+  border: none;
+  border-radius: var(--sc-radius-md);
+  cursor: pointer;
+  transition: background var(--sc-transition), transform var(--sc-transition);
+}
+
+.auth-form .btn-primary:hover {
+  background: var(--sc-blue-700);
+  transform: translateY(-1px);
+}
+
+.auth-form .note {
+  text-align: center;
+  font-size: 13px;
+  color: var(--sc-gray-500);
+  margin-top: 20px;
+}
+
+.auth-form .note a {
+  color: var(--sc-blue-700);
+  font-weight: 600;
+}
+
+.auth-form .note a:hover {
+  color: var(--sc-blue-900);
+}
+
+.auth-back {
+  display: block;
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,.85);
+}
+
+.auth-back:hover {
+  color: var(--sc-white);
+}

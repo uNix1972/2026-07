@@ -1,0 +1,3 @@
+*.tpl linguist-language=HTML
+*.less linguist-language=LESS
+*.php linguist-language=PHP

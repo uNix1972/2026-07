@@ -1,0 +1,96 @@
+{
+  "public": [
+    {
+      "id": "Menu_Landing",
+      "nav_url": "index.php?page=Landing",
+      "nav_label": "Inicio"
+    },
+    {
+      "id": "Menu_Nosotros",
+      "nav_url": "index.php?page=Nosotros",
+      "nav_label": "Nosotros"
+    },
+    {
+      "id": "Menu_Servicios",
+      "nav_url": "index.php?page=Servicios",
+      "nav_label": "Servicios"
+    },
+    {
+      "id": "Menu_Contacto",
+      "nav_url": "index.php?page=Contacto",
+      "nav_label": "Contacto"
+    }
+  ],
+  "private": [
+    {
+      "id": "Menu_Dashboard",
+      "nav_url": "index.php?page=HomeController",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 3l9 8h-3v10h-5v-6H11v6H6V11H3l9-8z'/></svg></span>&nbsp;Panel"
+    },
+    {
+      "id": "Menu_Medicos",
+      "nav_url": "index.php?page=MedicosController&action=index",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M19 6h-2a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-7 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6 10H6V8h12v10z'/></svg></span>&nbsp;Médicos"
+    },
+    {
+      "id": "Menu_Pacientes",
+      "nav_url": "index.php?page=PacientesController&action=index",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 12c2.76 0 5-2.24 5-5S14.76 2 12 2 7 4.24 7 7s2.24 5 5 5zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z'/></svg></span>&nbsp;Pacientes"
+    },
+    {
+      "id": "Menu_Citas",
+      "nav_url": "index.php?page=CitasController&action=index",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zm0-13H5V6h14v1z'/></svg></span>&nbsp;Citas"
+    },
+    {
+      "id": "Menu_Reportes",
+      "nav_url": "index.php?page=ReportesController",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M5 9h3v10H5V9zm5-4h3v14h-3V5zm5 7h3v7h-3v-7zM4 21h16v-2H4v2z'/></svg></span>&nbsp;Reportes"
+    },
+    {
+      "id": "Menu_Doctor",
+      "nav_url": "index.php?page=DoctoresController",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 2a4 4 0 0 1 4 4v2h3v4h-3v8H8v-8H5V8h3V6a4 4 0 0 1 4-4z'/></svg></span>&nbsp;Portal Doctor"
+    },
+    {
+      "id": "Menu_PacientePortal",
+      "nav_url": "index.php?page=PacientePortalController",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm-8 9a8 8 0 0 1 16 0H4z'/></svg></span>&nbsp;Portal Paciente"
+    },
+    {
+      "id": "Menu_Pagos",
+      "nav_url": "index.php?page=PagosController",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M3 6h18v12H3V6zm2 2v8h14V8H5zm2 5h5v2H7v-2z'/></svg></span>&nbsp;Pagos"
+    },
+    {
+      "id": "Menu_Notificaciones",
+      "nav_url": "index.php?page=NotificacionesController",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zM18 16v-5a6 6 0 1 0-12 0v5l-2 2h16l-2-2z'/></svg></span>&nbsp;Notificaciones"
+    },
+    {
+      "id": "Menu_BI",
+      "nav_url": "index.php?page=BIController",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M4 19h16v2H4v-2zm2-8h3v6H6v-6zm5-6h3v12h-3V5zm5 9h3v3h-3v-3z'/></svg></span>&nbsp;BI"
+    },
+    {
+      "id": "Menu_Bitacora",
+      "nav_url": "index.php?page=AuditController",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M7 3h10a2 2 0 0 1 2 2v16l-4-2-3 2-3-2-4 2V5a2 2 0 0 1 2-2zm2 5h6V6H9v2zm0 4h6v-2H9v2zm0 4h4v-2H9v2z'/></svg></span>&nbsp;Bitácora"
+    },
+    {
+      "id": "Menu_Profile",
+      "nav_url": "index.php?page=Security_Perfil",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5z'/></svg></span>&nbsp;Perfil"
+    },
+    {
+      "id": "Menu_Users",
+      "nav_url": "index.php?page=Security_Users",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm-8 1a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm8 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zM5 14c-2.21 0-5 1.11-5 3.5V20h5v-1.5c0-1.08.33-2.07.91-2.94C5.58 15.05 5.29 14.51 5 14z'/></svg></span>&nbsp;Usuarios"
+    },
+    {
+      "id": "Menu_Roles",
+      "nav_url": "index.php?page=Security_Roles",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 2l3 6 6 .9-4.4 4.3 1 6.3L12 16l-5.6 3.5 1-6.3L3 8.9 9 8l3-6z'/></svg></span>&nbsp;Roles"
+    }
+  ]
+}

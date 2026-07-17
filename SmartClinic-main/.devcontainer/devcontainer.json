@@ -1,0 +1,19 @@
+{
+  "name": "SmartClinic PHP Docker",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/SmartClinic",
+  "forwardPorts": [8080, 3306],
+  "postCreateCommand": "mkdir -p data && chmod -R 775 data && sudo rm -rf /var/www/html && sudo ln -s /workspaces/SmartClinic /var/www/html",
+  "postStartCommand": "sudo service apache2 start",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bmewburn.vscode-intelephense-client",
+        "xdebug.php-debug",
+        "cweijan.vscode-mysql-client2",
+        "neilbrayfield.php-docblocker"
+      ]
+    }
+  }
+}
