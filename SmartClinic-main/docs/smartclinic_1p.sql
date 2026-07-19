@@ -677,3 +677,74 @@ INSERT IGNORE INTO factura_detalle (id, factura_id, concepto, cantidad, precio_u
 INSERT IGNORE INTO notificaciones (id, tipo, mensaje, usuario_destino_id, leida) VALUES
     (1, 'Nueva cita web', 'Paciente Demo tiene una cita confirmada y pagada para hoy.', NULL, 0),
     (2, 'Sala de espera', 'Carlos Eduardo López se encuentra en sala de espera.', NULL, 0);
+
+-- Módulo de Inventario y Compras
+
+CREATE TABLE IF NOT EXISTS producto (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL,
+    descripcion VARCHAR(255) NULL,
+    unidad_medida VARCHAR(30) NOT NULL DEFAULT 'unidad',
+    stock_actual INT NOT NULL DEFAULT 0,
+    stock_minimo INT NOT NULL DEFAULT 0,
+    precio_unitario DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    estado CHAR(3) NOT NULL DEFAULT 'ACT',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS proveedor (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL,
+    contacto VARCHAR(150) NULL,
+    telefono VARCHAR(20) NULL,
+    email VARCHAR(150) NULL,
+    direccion VARCHAR(255) NULL,
+    estado CHAR(3) NOT NULL DEFAULT 'ACT',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS ajuste_inventario (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    producto_id INT NOT NULL,
+    tipo_ajuste ENUM('ENTRADA', 'SALIDA') NOT NULL,
+    cantidad INT NOT NULL,
+    motivo VARCHAR(255) NOT NULL,
+    usuario_id INT NULL,
+    fecha_ajuste DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (producto_id) REFERENCES producto(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES usuario(usercod) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS factura_compra (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    proveedor_id INT NOT NULL,
+    numero_factura VARCHAR(50) NOT NULL,
+    fecha_compra DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    usuario_id INT NULL,
+    FOREIGN KEY (proveedor_id) REFERENCES proveedor(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES usuario(usercod) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS factura_compra_detalle (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    factura_compra_id INT NOT NULL,
+    producto_id INT NOT NULL,
+    cantidad INT NOT NULL,
+    precio_unitario DECIMAL(10,2) NOT NULL,
+    subtotal DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (factura_compra_id) REFERENCES factura_compra(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (producto_id) REFERENCES producto(id) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+INSERT IGNORE INTO funciones (funcionId, funcionNombre, funcionDescripcion, funcionStatus) VALUES
+    (32, 'InventarioController', 'Controlador de inventario: productos, stock y ajustes', 'ACT'),
+    (33, 'ComprasController', 'Controlador de compras: proveedores y facturas de compra', 'ACT'),
+    (34, 'Menu_Inventario', 'Acceso al menú Inventario', 'ACT'),
+    (35, 'Menu_Compras', 'Acceso al menú Compras', 'ACT');
+
+INSERT IGNORE INTO funciones_roles (funcionRolId, funcionId, rolId, frStatus, frFechaInicio, frFechaFin) VALUES
+    (66, 32, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59'),
+    (67, 33, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59'),
+    (68, 34, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59'),
+    (69, 35, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59');

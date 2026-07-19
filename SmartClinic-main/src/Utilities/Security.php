@@ -48,6 +48,7 @@ class Security
         unset($_SESSION['userName']);
         unset($_SESSION['userEmail']);
         unset($_SESSION['sessionToken']);
+        Nav::invalidateNavData();
     }
 
     // =============================
