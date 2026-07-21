@@ -3,6 +3,9 @@
     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px;">
         <h2 style="font-size:3rem; color:#111827;">Inventario</h2>
         <div style="display:flex; gap:10px;">
+            <button type="button" class="btn btn--outline" onclick="window.location.href='index.php?page=InventarioController&action=kardex'">
+                Ver kárdex
+            </button>
             <button type="button" class="btn btn--outline" onclick="window.location.href='index.php?page=InventarioController&action=ajustar'">
                 Ajustar stock
             </button>

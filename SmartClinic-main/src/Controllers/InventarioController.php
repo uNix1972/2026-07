@@ -4,6 +4,7 @@ namespace Controllers;
 use Views\Renderer;
 use Dao\Producto as DaoProducto;
 use Dao\AjusteInventario as DaoAjusteInventario;
+use Dao\MovimientoInventario as DaoMovimientoInventario;
 use Utilities\Security;
 use Utilities\Site;
 use Utilities\Validators;
@@ -34,6 +35,10 @@ class InventarioController extends PrivateController
 
             case "ajustar":
                 $this->ajustar();
+                break;
+
+            case "kardex":
+                $this->kardex();
                 break;
 
             default:
@@ -207,5 +212,107 @@ class InventarioController extends PrivateController
         }
 
         Renderer::render("inventario_ajustar", ["productos" => DaoProducto::getActivos()]);
+    }
+
+    /**
+     * Pantalla de Kárdex: historial de entradas y salidas de inventario,
+     * con saldo acumulado, combinando ajustes manuales y compras a
+     * proveedor (ver Dao\MovimientoInventario para el detalle de por qué
+     * hace falta unir ambas fuentes).
+     *
+     * Filtros disponibles por GET (todos opcionales, se puede acceder sin
+     * ninguno y se muestra el historial completo de todos los productos):
+     *   - producto_id : filtra el kárdex a un solo producto
+     *   - fecha_inicio: 'YYYY-MM-DD', límite inferior (inclusive)
+     *   - fecha_fin   : 'YYYY-MM-DD', límite superior (inclusive)
+     */
+    private function kardex(): void
+    {
+        // Los filtros viajan en la URL (GET), no hay POST aquí porque esta
+        // pantalla solo consulta, no modifica nada. Por eso no requiere
+        // token CSRF (el CSRF solo protege acciones que cambian datos).
+        $productoId = Validators::sanitizeId($_GET["producto_id"] ?? "");
+        $fechaInicio = Validators::sanitizeDate($_GET["fecha_inicio"] ?? "");
+        $fechaFin = Validators::sanitizeDate($_GET["fecha_fin"] ?? "");
+
+        // Lista de productos para el <select> del filtro. Se usa getAll()
+        // (no getActivos()) a propósito: un producto desactivado puede
+        // seguir teniendo movimientos históricos que alguien necesite
+        // consultar, así que no debe desaparecer del filtro por eso.
+        $productos = array_map(function ($p) use ($productoId) {
+            $p["selected"] = $productoId !== null && (int) $p["id"] === $productoId;
+            return $p;
+        }, DaoProducto::getAll());
+
+        // Historial a mostrar en pantalla, ya recortado según los filtros
+        // de fecha que haya puesto el usuario.
+        $movimientos = DaoMovimientoInventario::getMovimientosConSaldo($productoId, $fechaInicio, $fechaFin);
+
+        // Se arma un pequeño resumen (total entradas / total salidas del
+        // rango filtrado) para que la pantalla no sea solo una tabla larga.
+        $totalEntradas = 0;
+        $totalSalidas = 0;
+        $numeroFila = 1;
+        foreach ($movimientos as &$mov) {
+            // El motor de plantillas del proyecto solo sabe evaluar "verdadero/falso"
+            // (no comparar texto), así que se calculan aquí las banderas que la
+            // vista necesita para pintar entradas en verde y salidas en rojo,
+            // y para distinguir visualmente si el movimiento vino de un ajuste
+            // manual o de una compra a proveedor.
+            $mov["es_salida"] = $mov["tipo_movimiento"] === "SALIDA";
+            $mov["es_compra"] = $mov["origen"] === "COMPRA";
+
+            if ($mov["es_salida"]) {
+                $totalSalidas += (int) $mov["cantidad"];
+            } else {
+                $totalEntradas += (int) $mov["cantidad"];
+            }
+            $mov["numero_fila"] = $numeroFila;
+            $numeroFila++;
+        }
+        unset($mov);
+
+        // --- Verificación de integridad (comprobación del "hueco" cerrado) ---
+        // Cuando se filtra por UN producto específico, se puede comprobar
+        // que la unión de ajustes + compras realmente cuadra con el stock
+        // real guardado en la tabla producto. Para esto NO se debe usar el
+        // saldo del historial ya filtrado por fecha (ese es solo "hasta
+        // cierta fecha"), sino el saldo con el historial COMPLETO del
+        // producto, que debe coincidir con producto.stock_actual en este
+        // mismo instante.
+        $productoSeleccionado = null;
+        $saldoCuadra = null;
+        if ($productoId !== null) {
+            // OJO: DaoProducto::getById() devuelve `false` (no `null`) cuando
+            // no encuentra el producto, porque así funciona PDOStatement::fetch()
+            // internamente (ver Dao\Table::obtenerUnRegistro). Por eso se valida
+            // con "!$productoEncontrado" (falsy) y no con "!== null", y se deja
+            // $productoSeleccionado explícitamente en null si no existe, para que
+            // la vista (que sí compara contra null/estar-seteado) se comporte igual
+            // tanto si no se filtró por producto como si se filtró por un id que
+            // ya no existe.
+            $productoEncontrado = DaoProducto::getById($productoId);
+            if ($productoEncontrado) {
+                $historialCompleto = DaoMovimientoInventario::getMovimientosConSaldo($productoId, null, null);
+                $saldoCalculado = count($historialCompleto) > 0
+                    ? (int) end($historialCompleto)["saldo_acumulado"]
+                    : 0;
+                $saldoCuadra = $saldoCalculado === (int) $productoEncontrado["stock_actual"];
+                $productoEncontrado["saldo_calculado"] = $saldoCalculado;
+                $productoSeleccionado = $productoEncontrado;
+            }
+        }
+
+        Renderer::render("inventario_kardex", [
+            "productos" => $productos,
+            "movimientos" => $movimientos,
+            "totalMovimientos" => count($movimientos),
+            "totalEntradas" => $totalEntradas,
+            "totalSalidas" => $totalSalidas,
+            "fechaInicio" => $fechaInicio ?? "",
+            "fechaFin" => $fechaFin ?? "",
+            "productoSeleccionado" => $productoSeleccionado,
+            "saldoCuadra" => $saldoCuadra
+        ]);
     }
 }
