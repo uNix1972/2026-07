@@ -3,6 +3,14 @@ namespace Dao;
 
 class Producto extends Table
 {
+    public const UNIDADES_MEDIDA = [
+        "Unidad", "Caja", "Blíster", "Tableta", "Cápsula", "Ampolla",
+        "Frasco", "Frasco ampolla", "Vial", "Jarabe", "Mililitro (ml)",
+        "Litro (L)", "Miligramo (mg)", "Gramo (g)", "Kilogramo (kg)",
+        "Gotas", "Sobre", "Tubo", "Parche", "Supositorio", "Inhalador",
+        "Jeringa prellenada"
+    ];
+
     public static function getAll(): array
     {
         $sql = "SELECT * FROM producto ORDER BY nombre ASC";
@@ -25,15 +33,17 @@ class Producto extends Table
         string $nombre,
         string $descripcion,
         string $unidadMedida,
+        int $unidadesPorCaja,
         int $stockMinimo,
         float $precioUnitario
     ): int {
-        $sql = "INSERT INTO producto (nombre, descripcion, unidad_medida, stock_actual, stock_minimo, precio_unitario)
-                VALUES (:nombre, :descripcion, :unidad_medida, 0, :stock_minimo, :precio_unitario)";
+        $sql = "INSERT INTO producto (nombre, descripcion, unidad_medida, unidades_por_caja, stock_actual, stock_minimo, precio_unitario)
+                VALUES (:nombre, :descripcion, :unidad_medida, :unidades_por_caja, 0, :stock_minimo, :precio_unitario)";
         parent::executeNonQuery($sql, [
             "nombre" => $nombre,
             "descripcion" => $descripcion,
             "unidad_medida" => $unidadMedida,
+            "unidades_por_caja" => $unidadesPorCaja,
             "stock_minimo" => $stockMinimo,
             "precio_unitario" => $precioUnitario
         ]);
@@ -45,11 +55,13 @@ class Producto extends Table
         string $nombre,
         string $descripcion,
         string $unidadMedida,
+        int $unidadesPorCaja,
         int $stockMinimo,
         float $precioUnitario
     ): bool {
         $sql = "UPDATE producto
                 SET nombre = :nombre, descripcion = :descripcion, unidad_medida = :unidad_medida,
+                    unidades_por_caja = :unidades_por_caja,
                     stock_minimo = :stock_minimo, precio_unitario = :precio_unitario
                 WHERE id = :id";
         return parent::executeNonQuery($sql, [
@@ -57,6 +69,7 @@ class Producto extends Table
             "nombre" => $nombre,
             "descripcion" => $descripcion,
             "unidad_medida" => $unidadMedida,
+            "unidades_por_caja" => $unidadesPorCaja,
             "stock_minimo" => $stockMinimo,
             "precio_unitario" => $precioUnitario
         ]);

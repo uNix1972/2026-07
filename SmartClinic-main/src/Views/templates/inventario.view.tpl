@@ -32,7 +32,7 @@
                 <tbody>
                     {{foreach productos}}
                     <tr style="border-bottom:1px solid #E5E7EB;">
-                        <td style="padding:14px; vertical-align:middle;">{{id}}</td>
+                        <td style="padding:14px; vertical-align:middle;">{{numero_fila}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{nombre}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{unidad_medida}}</td>
                         <td style="padding:14px; vertical-align:middle;">

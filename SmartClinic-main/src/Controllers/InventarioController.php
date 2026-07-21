@@ -42,11 +42,36 @@ class InventarioController extends PrivateController
         }
     }
 
+    private function buildUnidadesMedida(string $seleccion): array
+    {
+        $unidades = DaoProducto::UNIDADES_MEDIDA;
+        $yaExiste = false;
+        foreach ($unidades as $unidad) {
+            if (strcasecmp($unidad, $seleccion) === 0) {
+                $yaExiste = true;
+                break;
+            }
+        }
+        if ($seleccion !== "" && !$yaExiste) {
+            $unidades[] = $seleccion;
+        }
+
+        return array_map(function ($unidad) use ($seleccion) {
+            return [
+                "valor" => $unidad,
+                "selected" => strcasecmp($unidad, $seleccion) === 0
+            ];
+        }, $unidades);
+    }
+
     private function index(): void
     {
         $productos = DaoProducto::getAll();
+        $numeroFila = 1;
         foreach ($productos as &$producto) {
             $producto["stock_bajo"] = intval($producto["stock_actual"]) < intval($producto["stock_minimo"]);
+            $producto["numero_fila"] = $numeroFila;
+            $numeroFila++;
         }
         unset($producto);
 
@@ -60,29 +85,30 @@ class InventarioController extends PrivateController
     {
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if (!Security::validateCsrfPost()) {
-                Renderer::render("inventario_create", ["error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."]);
+                Renderer::render("inventario_create", ["unidades" => $this->buildUnidadesMedida("Unidad"), "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."]);
                 return;
             }
 
             $nombre = Validators::sanitizeString($_POST["nombre"] ?? "");
             $descripcion = Validators::sanitizeString($_POST["descripcion"] ?? "");
-            $unidadMedida = Validators::sanitizeString($_POST["unidad_medida"] ?? "unidad");
+            $unidadMedida = Validators::sanitizeString($_POST["unidad_medida"] ?? "Unidad");
+            $unidadesPorCaja = Validators::sanitizeInt($_POST["unidades_por_caja"] ?? 1, 1);
             $stockMinimo = Validators::sanitizeInt($_POST["stock_minimo"] ?? 0, 0);
             $precioUnitario = Validators::sanitizeFloat($_POST["precio_unitario"] ?? 0, 0);
 
-            if ($nombre === "" || $stockMinimo === null || $precioUnitario === null) {
-                Renderer::render("inventario_create", ["error" => "Todos los campos obligatorios deben ser válidos."]);
+            if ($nombre === "" || $unidadesPorCaja === null || $stockMinimo === null || $precioUnitario === null) {
+                Renderer::render("inventario_create", ["unidades" => $this->buildUnidadesMedida($unidadMedida === "" ? "Unidad" : $unidadMedida), "error" => "Todos los campos obligatorios deben ser válidos."]);
                 return;
             }
 
-            $newId = DaoProducto::insert($nombre, $descripcion, $unidadMedida === "" ? "unidad" : $unidadMedida, $stockMinimo, $precioUnitario);
+            $newId = DaoProducto::insert($nombre, $descripcion, $unidadMedida === "" ? "Unidad" : $unidadMedida, $unidadesPorCaja, $stockMinimo, $precioUnitario);
             AuditLogger::log('crear', 'Inventario', 'Producto creado: ' . $nombre, ['producto_id' => $newId]);
 
             Site::redirectTo("index.php?page=InventarioController&action=index");
             exit;
         }
 
-        Renderer::render("inventario_create", []);
+        Renderer::render("inventario_create", ["unidades" => $this->buildUnidadesMedida("Unidad")]);
     }
 
     private function edit(): void
@@ -96,23 +122,24 @@ class InventarioController extends PrivateController
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if (!Security::validateCsrfPost()) {
                 $producto = DaoProducto::getById($id);
-                Renderer::render("inventario_edit", ["producto" => $producto, "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."]);
+                Renderer::render("inventario_edit", ["producto" => $producto, "unidades" => $this->buildUnidadesMedida($producto["unidad_medida"] ?? "Unidad"), "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."]);
                 return;
             }
 
             $nombre = Validators::sanitizeString($_POST["nombre"] ?? "");
             $descripcion = Validators::sanitizeString($_POST["descripcion"] ?? "");
-            $unidadMedida = Validators::sanitizeString($_POST["unidad_medida"] ?? "unidad");
+            $unidadMedida = Validators::sanitizeString($_POST["unidad_medida"] ?? "Unidad");
+            $unidadesPorCaja = Validators::sanitizeInt($_POST["unidades_por_caja"] ?? 1, 1);
             $stockMinimo = Validators::sanitizeInt($_POST["stock_minimo"] ?? 0, 0);
             $precioUnitario = Validators::sanitizeFloat($_POST["precio_unitario"] ?? 0, 0);
 
-            if ($nombre === "" || $stockMinimo === null || $precioUnitario === null) {
+            if ($nombre === "" || $unidadesPorCaja === null || $stockMinimo === null || $precioUnitario === null) {
                 $producto = DaoProducto::getById($id);
-                Renderer::render("inventario_edit", ["producto" => $producto, "error" => "Todos los campos obligatorios deben ser válidos."]);
+                Renderer::render("inventario_edit", ["producto" => $producto, "unidades" => $this->buildUnidadesMedida($unidadMedida === "" ? "Unidad" : $unidadMedida), "error" => "Todos los campos obligatorios deben ser válidos."]);
                 return;
             }
 
-            DaoProducto::update($id, $nombre, $descripcion, $unidadMedida === "" ? "unidad" : $unidadMedida, $stockMinimo, $precioUnitario);
+            DaoProducto::update($id, $nombre, $descripcion, $unidadMedida === "" ? "Unidad" : $unidadMedida, $unidadesPorCaja, $stockMinimo, $precioUnitario);
             AuditLogger::log('editar', 'Inventario', 'Producto actualizado: ' . $nombre, ['producto_id' => $id]);
 
             Site::redirectTo("index.php?page=InventarioController&action=index");
@@ -124,7 +151,7 @@ class InventarioController extends PrivateController
             Site::redirectTo("index.php?page=InventarioController&action=index");
             exit;
         }
-        Renderer::render("inventario_edit", ["producto" => $producto]);
+        Renderer::render("inventario_edit", ["producto" => $producto, "unidades" => $this->buildUnidadesMedida($producto["unidad_medida"] ?? "Unidad")]);
     }
 
     private function delete(): void

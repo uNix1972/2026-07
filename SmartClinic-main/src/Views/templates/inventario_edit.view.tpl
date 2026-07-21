@@ -26,7 +26,16 @@
 
             <div>
                 <label style="display:block;margin-bottom:8px;font-weight:600;color:#0f172a;">Unidad de medida</label>
-                <input type="text" name="unidad_medida" value="{{unidad_medida}}" required style="width:100%;padding:12px;border:1px solid #C7C7CC;border-radius:10px;">
+                <select name="unidad_medida" required style="width:100%;padding:12px;border:1px solid #C7C7CC;border-radius:10px;">
+                    {{foreach &unidades}}
+                    <option value="{{valor}}" {{if selected}}selected{{endif selected}}>{{valor}}</option>
+                    {{endfor &unidades}}
+                </select>
+            </div>
+
+            <div>
+                <label style="display:block;margin-bottom:8px;font-weight:600;color:#0f172a;">Unidades por caja</label>
+                <input type="number" name="unidades_por_caja" min="1" value="{{unidades_por_caja}}" required style="width:100%;padding:12px;border:1px solid #C7C7CC;border-radius:10px;">
             </div>
 
             <div style="grid-column:1/3;">

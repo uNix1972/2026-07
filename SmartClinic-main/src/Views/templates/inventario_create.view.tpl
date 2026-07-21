@@ -19,7 +19,16 @@
 
         <div class="form-group">
           <label for="unidad_medida">Unidad de medida</label>
-          <input id="unidad_medida" type="text" name="unidad_medida" value="unidad" required placeholder="unidad, caja, ml...">
+          <select id="unidad_medida" name="unidad_medida" required>
+            {{foreach unidades}}
+            <option value="{{valor}}" {{if selected}}selected{{endif selected}}>{{valor}}</option>
+            {{endfor unidades}}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="unidades_por_caja">Unidades por caja</label>
+          <input id="unidades_por_caja" type="number" name="unidades_por_caja" min="1" value="1" required>
         </div>
 
         <div class="form-group" style="grid-column:1/3;">

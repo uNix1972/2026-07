@@ -1,31 +1,29 @@
 <div class="container section-pad">
   <div class="form-card" style="max-width:900px; margin:0 auto;">
     <div style="margin-bottom:30px;">
-      <h2 style="color:#033B9F; margin-bottom:10px; font-size:2.2rem;">Nueva factura de compra</h2>
-      <p style="color:#636366;">Selecciona el proveedor y agrega los productos comprados. El stock se actualiza automáticamente al guardar.</p>
+      <h2 style="color:#033B9F; margin-bottom:10px; font-size:2.2rem;">Editar factura de compra</h2>
+      <p style="color:#636366;">Actualiza el proveedor y los productos de esta compra. El stock se ajusta automáticamente según los cambios.</p>
     </div>
 
     {{if error}}
     <div class="form-alert error" style="display:block; margin-bottom:16px;">{{error}}</div>
     {{endif error}}
 
-    <form method="POST">
-      <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+    {{with factura}}
+    <form method="POST" action="index.php?page=ComprasController&action=edit&id={{id}}">
+      <input type="hidden" name="csrf_token" value="{{&csrf_token}}">
       <div class="form-grid">
         <div class="form-group">
           <label for="proveedor_id">Proveedor</label>
           <select id="proveedor_id" name="proveedor_id" required>
             <option value="">Seleccione...</option>
-            {{foreach proveedores}}
-            <option value="{{id}}">{{nombre}}</option>
-            {{endfor proveedores}}
+            {{foreach &proveedores}}
+            <option value="{{id}}" {{if selected}}selected{{endif selected}}>{{nombre}}</option>
+            {{endfor &proveedores}}
           </select>
-          <small style="display:block; margin-top:6px;">
-            ¿No está en la lista? <a href="index.php?page=ComprasController&action=proveedores">Registrar nuevo proveedor</a>
-          </small>
         </div>
-
       </div>
+      <p style="color:#636366; margin-top:-8px;">N° Factura: <strong>{{numero_factura}}</strong> (no se puede modificar)</p>
 
       <h3 style="margin:24px 0 12px 0; color:#111827;">Productos comprados</h3>
 
@@ -41,28 +39,30 @@
             </tr>
           </thead>
           <tbody id="lineas-body">
+            {{foreach &detalle}}
             <tr class="linea-row">
               <td style="padding:10px;">
                 <select name="producto_id[]" class="select-producto" required style="width:100%;">
                   <option value="">Seleccione...</option>
-                  {{foreach productos}}
-                  <option value="{{id}}" data-cajas="{{unidades_por_caja}}" data-unidad="{{unidad_medida}}">{{nombre}}</option>
-                  {{endfor productos}}
+                  {{foreach opciones_producto}}
+                  <option value="{{id}}" data-cajas="{{unidades_por_caja}}" data-unidad="{{unidad_medida}}" {{if selected}}selected{{endif selected}}>{{nombre}}</option>
+                  {{endfor opciones_producto}}
                 </select>
               </td>
               <td style="padding:10px;">
                 <select name="tipo_compra[]" class="select-tipo-compra" style="width:100%;">
-                  <option value="UNI" selected>Unidad</option>
-                  <option value="CAJ">Caja</option>
+                  <option value="UNI" {{ifnot es_caja}}selected{{endifnot es_caja}}>Unidad</option>
+                  <option value="CAJ" {{if es_caja}}selected{{endif es_caja}}>Caja</option>
                 </select>
               </td>
               <td style="padding:10px;">
-                <input type="number" name="cantidad[]" class="input-cantidad" min="1" required style="width:100%;">
+                <input type="number" name="cantidad[]" class="input-cantidad" min="1" value="{{cantidad_display}}" required style="width:100%;">
                 <small class="hint-conversion" style="display:none; color:#636366;"></small>
               </td>
-              <td style="padding:10px;"><input type="number" name="precio_unitario[]" class="input-precio" min="0.01" step="0.01" required style="width:100%;"></td>
+              <td style="padding:10px;"><input type="number" name="precio_unitario[]" class="input-precio" min="0.01" step="0.01" value="{{precio_display}}" required style="width:100%;"></td>
               <td style="padding:10px;"><button type="button" class="btn-remove-linea" style="background:#D63031;color:white;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;">✕</button></td>
             </tr>
+            {{endfor &detalle}}
           </tbody>
         </table>
       </div>
@@ -70,10 +70,11 @@
       <button type="button" id="btn-agregar-linea" class="btn btn--outline" style="margin-top:12px;">+ Agregar producto</button>
 
       <div class="form-actions">
-        <a href="index.php?page=ComprasController&action=index" class="btn btn--outline">Cancelar</a>
-        <button type="submit" class="btn btn--primary">Guardar factura</button>
+        <a href="index.php?page=ComprasController&action=view&id={{id}}" class="btn btn--outline">Cancelar</a>
+        <button type="submit" class="btn btn--primary">Guardar cambios</button>
       </div>
     </form>
+    {{endwith factura}}
   </div>
 </div>
 <script>
@@ -117,6 +118,7 @@
     document.querySelectorAll('.linea-row').forEach(function (row) {
       wireRemove(row);
       wireConversion(row);
+      updateHint(row);
     });
 
     document.getElementById('btn-agregar-linea').addEventListener('click', function () {

@@ -685,6 +685,7 @@ CREATE TABLE IF NOT EXISTS producto (
     nombre VARCHAR(150) NOT NULL,
     descripcion VARCHAR(255) NULL,
     unidad_medida VARCHAR(30) NOT NULL DEFAULT 'unidad',
+    unidades_por_caja INT NOT NULL DEFAULT 1,
     stock_actual INT NOT NULL DEFAULT 0,
     stock_minimo INT NOT NULL DEFAULT 0,
     precio_unitario DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -722,6 +723,7 @@ CREATE TABLE IF NOT EXISTS factura_compra (
     fecha_compra DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     usuario_id INT NULL,
+    UNIQUE KEY uq_proveedor_numero_factura (proveedor_id, numero_factura),
     FOREIGN KEY (proveedor_id) REFERENCES proveedor(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (usuario_id) REFERENCES usuario(usercod) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
@@ -732,6 +734,8 @@ CREATE TABLE IF NOT EXISTS factura_compra_detalle (
     producto_id INT NOT NULL,
     cantidad INT NOT NULL,
     precio_unitario DECIMAL(10,2) NOT NULL,
+    tipo_compra CHAR(3) NOT NULL DEFAULT 'UNI',
+    cantidad_cajas INT NULL,
     subtotal DECIMAL(10,2) NOT NULL,
     FOREIGN KEY (factura_compra_id) REFERENCES factura_compra(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (producto_id) REFERENCES producto(id) ON DELETE RESTRICT ON UPDATE CASCADE

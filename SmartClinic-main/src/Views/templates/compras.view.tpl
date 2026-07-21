@@ -30,15 +30,19 @@
                 <tbody>
                     {{foreach facturas}}
                     <tr style="border-bottom:1px solid #E5E7EB;">
-                        <td style="padding:14px; vertical-align:middle;">{{id}}</td>
+                        <td style="padding:14px; vertical-align:middle;">{{numero_fila}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{numero_factura}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{proveedor_nombre}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{fecha_compra}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{total}}</td>
                         <td style="padding:14px; vertical-align:middle;">
                             <a href="index.php?page=ComprasController&action=view&id={{id}}"
-                               style="background:#0260CB; color:white; padding:8px 12px; border-radius:8px; text-decoration:none;">
+                               style="background:#0260CB; color:white; padding:8px 12px; border-radius:8px; text-decoration:none; margin-right:5px;">
                                 Ver
+                            </a>
+                            <a href="index.php?page=ComprasController&action=edit&id={{id}}"
+                               style="background:#033B9F; color:white; padding:8px 12px; border-radius:8px; text-decoration:none;">
+                                Editar
                             </a>
                         </td>
                     </tr>
