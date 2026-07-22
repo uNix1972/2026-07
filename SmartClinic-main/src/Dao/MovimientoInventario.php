@@ -182,4 +182,17 @@ class MovimientoInventario extends Table
 
         return $movimientos;
     }
+
+    /**
+     * Devuelve los últimos $limit movimientos (ajustes + compras), del más
+     * reciente al más antiguo. Pensado para widgets tipo "Movimientos
+     * recientes" en pantallas de resumen, donde no hace falta el saldo
+     * acumulado (eso es lo que sí calcula getMovimientosConSaldo, pensado
+     * para la pantalla de Kárdex).
+     */
+    public static function getRecientes(int $limit = 10): array
+    {
+        $movimientos = self::getMovimientos(null, null, null, 'DESC');
+        return array_slice($movimientos, 0, $limit);
+    }
 }

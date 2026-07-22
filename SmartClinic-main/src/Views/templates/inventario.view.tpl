@@ -66,8 +66,9 @@
     </div>
 
     <div style="background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,.08);">
-        <div style="padding:20px 15px 0 15px;">
-            <h3 style="color:#111827;">Ajustes recientes</h3>
+        <div style="padding:20px 15px 0 15px; display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="color:#111827;">Movimientos recientes</h3>
+            <a href="index.php?page=InventarioController&action=kardex" style="font-weight:600;">Ver kárdex completo</a>
         </div>
         <div class="table-responsive">
             <table style="width:100%; border-collapse:collapse;">
@@ -76,23 +77,35 @@
                         <th style="padding:15px; text-align:left;">Fecha</th>
                         <th style="padding:15px;">Producto</th>
                         <th style="padding:15px;">Tipo</th>
+                        <th style="padding:15px;">Origen</th>
                         <th style="padding:15px;">Cantidad</th>
-                        <th style="padding:15px;">Motivo</th>
+                        <th style="padding:15px;">Referencia</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {{foreach ajustesRecientes}}
+                    {{foreach movimientosRecientes}}
                     <tr style="border-bottom:1px solid #E5E7EB;">
-                        <td style="padding:14px; vertical-align:middle;">{{fecha_ajuste}}</td>
+                        <td style="padding:14px; vertical-align:middle;">{{fecha}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{producto_nombre}}</td>
-                        <td style="padding:14px; vertical-align:middle;">{{tipo_ajuste}}</td>
+                        <td style="padding:14px; vertical-align:middle;">
+                            {{if es_salida}}<span style="color:#D63031; font-weight:600;">Salida</span>{{endif es_salida}}
+                            {{ifnot es_salida}}<span style="color:#0F9D58; font-weight:600;">Entrada</span>{{endifnot es_salida}}
+                        </td>
+                        <td style="padding:14px; vertical-align:middle;">
+                            {{if es_compra}}<span style="background:#E0ECFF; color:#033B9F; padding:3px 10px; border-radius:999px; font-size:.85rem;">Compra</span>{{endif es_compra}}
+                            {{ifnot es_compra}}<span style="background:#F1F5F9; color:#334155; padding:3px 10px; border-radius:999px; font-size:.85rem;">Ajuste manual</span>{{endifnot es_compra}}
+                        </td>
                         <td style="padding:14px; vertical-align:middle;">{{cantidad}}</td>
-                        <td style="padding:14px; vertical-align:middle;">{{motivo}}</td>
+                        <td style="padding:14px; vertical-align:middle;">{{referencia}}</td>
                     </tr>
-                    {{endfor ajustesRecientes}}
+                    {{endfor movimientosRecientes}}
                 </tbody>
             </table>
         </div>
+
+        {{ifnot movimientosRecientes}}
+        <p style="color:#64748b; padding:20px;">Todavía no hay movimientos de inventario registrados.</p>
+        {{endifnot movimientosRecientes}}
     </div>
 
 </div>

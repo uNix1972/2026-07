@@ -80,9 +80,22 @@ class InventarioController extends PrivateController
         }
         unset($producto);
 
+        // "Movimientos recientes": antes este bloque leía solo
+        // DaoAjusteInventario::getRecientes() (ajustes manuales), y por lo
+        // tanto no mostraba las entradas por compra. Se cambió a la fuente
+        // unificada (Dao\MovimientoInventario) para que esta vista cuente
+        // la misma historia que la pantalla de Kárdex y no confunda al
+        // usuario mostrando información incompleta.
+        $movimientosRecientes = DaoMovimientoInventario::getRecientes(10);
+        foreach ($movimientosRecientes as &$mov) {
+            $mov["es_salida"] = $mov["tipo_movimiento"] === "SALIDA";
+            $mov["es_compra"] = $mov["origen"] === "COMPRA";
+        }
+        unset($mov);
+
         Renderer::render("inventario", [
             "productos" => $productos,
-            "ajustesRecientes" => DaoAjusteInventario::getRecientes(10)
+            "movimientosRecientes" => $movimientosRecientes
         ]);
     }
 
