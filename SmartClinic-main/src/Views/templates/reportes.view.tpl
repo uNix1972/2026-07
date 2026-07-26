@@ -68,6 +68,7 @@
             <tr style="background:#F1F5F9; color:#17203a;">
               <th style="padding:12px;">Fecha</th>
               <th style="padding:12px;">Paciente</th>
+              <th style="padding:12px;">Centro / Consultorio</th>
               <th style="padding:12px;">Estado</th>
             </tr>
           </thead>
@@ -76,6 +77,7 @@
             <tr style="border-bottom:1px solid #E5E7EB;">
               <td style="padding:12px;">{{fecha_hora}}</td>
               <td style="padding:12px;">{{paciente_nombres}} {{paciente_apellidos}}</td>
+              <td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td>
               <td style="padding:12px;">{{nombre_estado}}</td>
             </tr>
             {{endfor ultimasCitas}}

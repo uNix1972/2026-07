@@ -181,7 +181,7 @@ class MedicosController extends PublicController
 
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $medico = array_merge($medico, $this->readDoctorData());
-            $assignmentResult = $this->readAssignments();
+            $assignmentResult = $this->readAssignments($id);
             $assignments = $assignmentResult["items"];
 
             if (!Security::validateCsrfPost()) {
@@ -321,11 +321,16 @@ class MedicosController extends PublicController
         return null;
     }
 
-    private function readAssignments(): array
+    private function readAssignments(int $excludeMedicoId = 0): array
     {
         $selectedIds = $_POST["centro_ids"] ?? [];
         $consultorios = $_POST["consultorios"] ?? [];
         $activeCenters = DaoCentroSalud::getActivos();
+        $centerNames = [];
+        foreach ($activeCenters as $activeCenter) {
+            $centerNames[(int) $activeCenter["id"]] =
+                (string) $activeCenter["nombre"];
+        }
         $allowedIds = array_fill_keys(
             array_map("intval", array_column($activeCenters, "id")),
             true
@@ -371,9 +376,41 @@ class MedicosController extends PublicController
                 ];
             }
 
+            $consultorio = Validators::sanitizeString($consultorioRaw, 30);
+            if ($consultorio === "") {
+                return [
+                    "items" => $items,
+                    "error" => "El consultorio contiene un valor inválido."
+                ];
+            }
+
+            $roomConflict =
+                DaoMedicoCentroSalud::findActiveConsultorioConflict(
+                    $centerId,
+                    $consultorio,
+                    $excludeMedicoId
+                );
+            if ($roomConflict) {
+                $doctorName = trim(
+                    strval($roomConflict["medico_nombres"] ?? "")
+                    . " "
+                    . strval($roomConflict["medico_apellidos"] ?? "")
+                );
+                return [
+                    "items" => $items,
+                    "error" => "El consultorio "
+                        . $consultorio
+                        . " de "
+                        . ($centerNames[$centerId] ?? "ese centro")
+                        . " ya está asignado al médico "
+                        . ($doctorName !== "" ? $doctorName : "indicado")
+                        . "."
+                ];
+            }
+
             $items[] = [
                 "centro_salud_id" => $centerId,
-                "consultorio" => Validators::sanitizeString($consultorioRaw, 30)
+                "consultorio" => $consultorio
             ];
             $seen[$centerId] = true;
         }

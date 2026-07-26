@@ -47,6 +47,11 @@ check(!\Utilities\Security::validateCsrfPost(), 'CSRF inválido rechazado');
 $citasDao = file_get_contents(__DIR__ . '/../src/Dao/Citas.php');
 check(strpos($citasDao, 'estado_id != 2') === false, 'la disponibilidad ya no excluye citas confirmadas');
 check(strpos($citasDao, 'estado_id NOT IN (4, 5)') !== false, 'la disponibilidad excluye solo estados no activos');
+check(strpos($citasDao, 'getAvailabilityConflicts') !== false, 'disponibilidad devuelve el detalle del conflicto');
+check(strpos($citasDao, 'c.fecha_hora > DATE_SUB') !== false, 'inicio del solapamiento usa límite estricto');
+check(strpos($citasDao, 'c.fecha_hora < DATE_ADD') !== false, 'fin del solapamiento usa límite estricto');
+check(strpos($citasDao, 'BETWEEN DATE_SUB') === false, 'citas consecutivas de 30 minutos ya no se bloquean');
+check(strpos($citasDao, 'paciente_id = NULLIF(:paciente_id, 0)') !== false, 'horarios disponibles consideran al paciente');
 
 check(is_file(__DIR__ . '/../Dockerfile'), 'Dockerfile presente');
 check(is_file(__DIR__ . '/../docker-compose.yml'), 'docker-compose.yml presente');
@@ -81,8 +86,18 @@ check(is_file(__DIR__ . '/../src/Controllers/CentrosSaludController.php'), 'cont
 check(is_file(__DIR__ . '/../src/Views/templates/centros_salud.view.tpl'), 'vista del catálogo de centros de salud presente');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS medico_centro_salud') !== false, 'relación médico-centro documentada');
 check(strpos($sql, "'SmartClinic Center'") !== false, 'centro de salud predeterminado documentado');
-check(strpos($sql, "'01'") !== false, 'consultorio predeterminado para médicos existentes documentado');
+check(strpos($sql, "LPAD(m.id, 2, '0')") !== false, 'consultorios iniciales únicos por médico documentados');
+check(strpos($sql, '-- cambios para evitar consultorios duplicados en un centro de salud') !== false, 'migración de consultorios únicos documentada');
+check(strpos($sql, 'consultorio_activo') !== false, 'columna activa para unicidad de consultorio documentada');
+check(strpos($sql, 'uq_centro_consultorio_activo') !== false, 'índice único de consultorio activo documentado');
+check(strpos($sql, '-- cambios para aplicar centros de salud a las citas') !== false, 'migración de centros en citas documentada');
+check(strpos($sql, 'ADD COLUMN IF NOT EXISTS centro_salud_id') !== false, 'columna centro de salud de citas documentada');
+check(strpos($sql, 'fk_cita_medico_centro') !== false, 'integridad médico-centro de citas documentada');
+check(strpos($sql, '-- cambios para aplicar centros de salud a los ajustes de inventario') !== false, 'migración de centros en ajustes documentada');
+check(strpos($sql, 'fk_ajuste_inventario_centro_salud') !== false, 'integridad centro-ajuste documentada');
 check(is_file(__DIR__ . '/../src/Dao/MedicoCentroSalud.php'), 'DAO comentado de relación médico-centro presente');
+$medicoCentroDao = file_get_contents(__DIR__ . '/../src/Dao/MedicoCentroSalud.php');
+check(strpos($medicoCentroDao, 'findActiveConsultorioConflict') !== false, 'DAO valida consultorio activo único por centro');
 
 $medicosDao = file_get_contents(__DIR__ . '/../src/Dao/Medicos.php');
 check(strpos($medicosDao, 'insertMedicoConCentros') !== false, 'alta transaccional de médico y centros presente');
@@ -93,6 +108,52 @@ $medicoEdit = file_get_contents(__DIR__ . '/../src/Views/templates/medico_edit.v
 check(strpos($medicoCreate, 'name="centro_ids[]"') !== false, 'alta de médico permite seleccionar centros');
 check(strpos($medicoEdit, 'name="centro_ids[]"') !== false, 'edición de médico permite seleccionar centros');
 
+$citasController = file_get_contents(__DIR__ . '/../src/Controllers/CitasController.php');
+$citaCreate = file_get_contents(__DIR__ . '/../src/Views/templates/cita_agendar.view.tpl');
+$citaEdit = file_get_contents(__DIR__ . '/../src/Views/templates/cita_edit.view.tpl');
+$pacientePortal = file_get_contents(__DIR__ . '/../src/Views/templates/paciente_portal.view.tpl');
+$messageNotifier = file_get_contents(__DIR__ . '/../src/Utilities/MessageNotifier.php');
+check(strpos($citasDao, 'centro_salud_id') !== false, 'DAO de citas persiste el centro de salud');
+check(strpos($citasDao, 'centro_nombre') !== false, 'DAO de citas devuelve la ubicación');
+check(strpos($citasController, 'availableCenters') !== false, 'citas expone centros activos por médico');
+check(strpos($citasController, 'getActivoByMedicoCentro') !== false, 'citas valida la asignación médico-centro');
+check(strpos($citaCreate, 'name="centro_salud_id"') !== false, 'alta de cita solicita centro de salud');
+check(strpos($citaEdit, 'name="centro_salud_id"') !== false, 'edición de cita solicita centro de salud');
+check(strpos($pacientePortal, 'name="centro_salud_id"') !== false, 'portal del paciente solicita centro de salud');
+check(strpos($messageNotifier, 'Centro de salud: %s') !== false, 'mensaje de cita incluye centro de salud');
+check(strpos($citasDao, 'paciente_telefono') !== false, 'DAO de citas devuelve teléfono del paciente');
+check(strpos($citasController, "case 'notify':") !== false, 'citas expone notificación manual');
+check(strpos($citasController, "\$_POST['notify_patient']") !== false, 'alta de cita respeta notificación inmediata opcional');
+check(strpos($citasController, "strtotime(\$b['fecha_hora'] ?? '') <=> strtotime(\$a['fecha_hora'] ?? '')") !== false, 'lista de citas ordenada por fecha y hora descendente');
+check(strpos($citasController, 'buildAvailabilityConflictMessage') !== false, 'citas explica si el conflicto es del médico o paciente');
+check(strpos($citaCreate, 'data-telefono="{{telefono}}"') !== false, 'alta muestra teléfono del paciente seleccionado');
+check(strpos($citaCreate, '&paciente_id=') !== false, 'alta recarga horarios con el paciente seleccionado');
+check(strpos($citaEdit, '&paciente_id=') !== false, 'edición recarga horarios con el paciente seleccionado');
+check(strpos($citaCreate, 'name="notify_patient"') !== false, 'alta pregunta por notificación inmediata');
+check(strpos($citaCreate, 'id="appointment_confirmation"') !== false, 'alta confirma que los datos de la cita sean correctos');
+check(strpos($citaCreate, 'id="notify_patient_choice"') !== false, 'confirmación de alta contiene la opción de notificar');
+check(strpos($citaCreate, 'name="notify_patient" value="1"') === false, 'opción de notificar ya no aparece directamente en el formulario');
+
+$citasView = file_get_contents(__DIR__ . '/../src/Views/templates/citas.view.tpl');
+check(strpos($citasView, 'action=notify') !== false, 'lista de citas permite notificar al paciente');
+check(strpos($pacientePortal, 'id="portal_paciente_id"') !== false, 'portal del paciente consulta disponibilidad propia');
+check(strpos($pacientePortal, '<select id="hora"') !== false, 'portal del paciente muestra solo horas disponibles');
+
+$inventoryController = file_get_contents(__DIR__ . '/../src/Controllers/InventarioController.php');
+$adjustmentDao = file_get_contents(__DIR__ . '/../src/Dao/AjusteInventario.php');
+$movementDao = file_get_contents(__DIR__ . '/../src/Dao/MovimientoInventario.php');
+$adjustmentView = file_get_contents(__DIR__ . '/../src/Views/templates/inventario_ajustar.view.tpl');
+$inventoryView = file_get_contents(__DIR__ . '/../src/Views/templates/inventario.view.tpl');
+$kardexView = file_get_contents(__DIR__ . '/../src/Views/templates/inventario_kardex.view.tpl');
+check(strpos($inventoryController, 'DaoCentroSalud::getActivos') !== false, 'ajustes cargan centros de salud activos');
+check(strpos($inventoryController, 'registerWithStockChange') !== false, 'ajuste y stock se registran atómicamente');
+check(strpos($adjustmentDao, 'SELECT id, stock_actual') !== false, 'DAO de ajustes bloquea el producto antes de modificar stock');
+check(strpos($adjustmentDao, 'centro_salud_id') !== false, 'DAO de ajustes persiste el centro de salud');
+check(strpos($movementDao, 'cs.nombre') !== false, 'movimientos devuelven el centro del ajuste');
+check(strpos($movementDao, "'Inventario general'") !== false, 'compras globales tienen ubicación descriptiva');
+check(strpos($adjustmentView, 'name="centro_salud_id"') !== false, 'formulario de ajuste exige centro de salud');
+check(strpos($inventoryView, '{{centro_nombre}}') !== false, 'movimientos recientes muestran centro de salud');
+check(strpos($kardexView, '{{centro_nombre}}') !== false, 'kárdex muestra centro de salud');
 
 $navConfig = file_get_contents(__DIR__ . '/../nav.config.json');
 check(strpos($navConfig, 'ReportesController') !== false, 'menú de reportes registrado');

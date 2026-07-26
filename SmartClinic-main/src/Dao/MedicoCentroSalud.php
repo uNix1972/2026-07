@@ -17,6 +17,28 @@ namespace Dao;
 class MedicoCentroSalud extends Table
 {
     /**
+     * Obtiene todas las asignaciones operativas disponibles para citas.
+     *
+     * El resultado incluye el médico, el centro y el consultorio para poblar
+     * selectores dependientes sin duplicar SQL en los controladores.
+     */
+    public static function getAllActivos(): array
+    {
+        $sql = "SELECT mcs.medico_id, mcs.centro_salud_id, mcs.consultorio,
+                       cs.codigo, cs.nombre AS centro_nombre,
+                       cs.tipo AS centro_tipo, cs.direccion AS centro_direccion,
+                       cs.ciudad AS centro_ciudad
+                FROM medico_centro_salud mcs
+                JOIN centro_salud cs ON cs.id = mcs.centro_salud_id
+                JOIN medico m ON m.id = mcs.medico_id
+                WHERE mcs.estado = 'ACT'
+                  AND cs.estado = 'ACT'
+                ORDER BY m.apellidos ASC, m.nombres ASC, cs.nombre ASC";
+
+        return parent::obtenerRegistros($sql, []);
+    }
+
+    /**
      * Obtiene las asignaciones activas de un médico con los datos del centro.
      *
      * Los centros inactivos no se devuelven como opciones operativas aunque
@@ -34,6 +56,74 @@ class MedicoCentroSalud extends Table
                 ORDER BY cs.nombre ASC";
 
         return parent::obtenerRegistros($sql, ["medico_id" => $medicoId]);
+    }
+
+    /**
+     * Resuelve una asignación activa específica de médico y centro.
+     *
+     * Esta comprobación es la validación autoritativa antes de insertar o
+     * editar una cita. Devuelve false cuando la relación o el centro están
+     * inactivos, aunque ambos IDs existan por separado.
+     */
+    public static function getActivoByMedicoCentro(
+        int $medicoId,
+        int $centroSaludId
+    ) {
+        $sql = "SELECT mcs.medico_id, mcs.centro_salud_id, mcs.consultorio,
+                       cs.codigo, cs.nombre AS centro_nombre,
+                       cs.tipo AS centro_tipo, cs.direccion AS centro_direccion,
+                       cs.ciudad AS centro_ciudad
+                FROM medico_centro_salud mcs
+                JOIN centro_salud cs ON cs.id = mcs.centro_salud_id
+                WHERE mcs.medico_id = :medico_id
+                  AND mcs.centro_salud_id = :centro_salud_id
+                  AND mcs.estado = 'ACT'
+                  AND cs.estado = 'ACT'";
+
+        return parent::obtenerUnRegistro($sql, [
+            "medico_id" => $medicoId,
+            "centro_salud_id" => $centroSaludId
+        ]);
+    }
+
+    /**
+     * Busca otro médico que use activamente el mismo consultorio del centro.
+     *
+     * La comparación usa la intercalación de la base de datos, por lo que no
+     * distingue mayúsculas de minúsculas. $excludeMedicoId permite conservar
+     * el consultorio actual durante la edición del mismo médico.
+     *
+     * @return array|false Asignación conflictiva con datos del médico y centro.
+     */
+    public static function findActiveConsultorioConflict(
+        int $centroSaludId,
+        string $consultorio,
+        int $excludeMedicoId = 0
+    ) {
+        $sql = "SELECT mcs.medico_id, mcs.centro_salud_id, mcs.consultorio,
+                       m.nombres AS medico_nombres,
+                       m.apellidos AS medico_apellidos,
+                       cs.nombre AS centro_nombre
+                FROM medico_centro_salud mcs
+                JOIN medico m ON m.id = mcs.medico_id
+                JOIN centro_salud cs ON cs.id = mcs.centro_salud_id
+                WHERE mcs.centro_salud_id = :centro_salud_id
+                  AND mcs.estado = 'ACT'
+                  AND TRIM(mcs.consultorio) = :consultorio";
+
+        $params = [
+            "centro_salud_id" => $centroSaludId,
+            "consultorio" => trim($consultorio)
+        ];
+
+        if ($excludeMedicoId > 0) {
+            $sql .= " AND mcs.medico_id != :exclude_medico_id";
+            $params["exclude_medico_id"] = $excludeMedicoId;
+        }
+
+        $sql .= " ORDER BY mcs.medico_id ASC LIMIT 1";
+
+        return parent::obtenerUnRegistro($sql, $params);
     }
 
     /**
@@ -105,4 +195,3 @@ class MedicoCentroSalud extends Table
         return (int) ($row["total"] ?? 0);
     }
 }
-

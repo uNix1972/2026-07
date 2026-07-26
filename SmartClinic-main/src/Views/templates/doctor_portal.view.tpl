@@ -22,12 +22,13 @@
       {{if sala}}
       <div class="table-responsive">
         <table style="width:100%; border-collapse:collapse; text-align:left;">
-          <thead><tr style="background:#F1F5F9;"><th style="padding:12px;">Hora</th><th style="padding:12px;">Paciente</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Acción</th></tr></thead>
+          <thead><tr style="background:#F1F5F9;"><th style="padding:12px;">Hora</th><th style="padding:12px;">Paciente</th><th style="padding:12px;">Centro / Consultorio</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Acción</th></tr></thead>
           <tbody>
           {{foreach sala}}
           <tr style="border-bottom:1px solid #E5E7EB;">
             <td style="padding:12px;">{{fecha_hora}}</td>
             <td style="padding:12px;">{{paciente_nombres}} {{paciente_apellidos}}</td>
+            <td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td>
             <td style="padding:12px;">{{nombre_estado}}</td>
             <td style="padding:12px;">
               <form method="POST" action="index.php?page=DoctoresController&action=iniciarAtencion" style="display:inline;">
@@ -66,13 +67,14 @@
     {{if agenda}}
     <div class="table-responsive">
       <table style="width:100%; border-collapse:collapse; text-align:left;">
-        <thead><tr style="background:#033B9F; color:white;"><th style="padding:12px;">ID</th><th style="padding:12px;">Fecha</th><th style="padding:12px;">Paciente</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Flujo</th></tr></thead>
+        <thead><tr style="background:#033B9F; color:white;"><th style="padding:12px;">ID</th><th style="padding:12px;">Fecha</th><th style="padding:12px;">Paciente</th><th style="padding:12px;">Centro / Consultorio</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Flujo</th></tr></thead>
         <tbody>
         {{foreach agenda}}
         <tr style="border-bottom:1px solid #E5E7EB;">
           <td style="padding:12px;">{{id}}</td>
           <td style="padding:12px;">{{fecha_hora}}</td>
           <td style="padding:12px;">{{paciente_nombres}} {{paciente_apellidos}}</td>
+          <td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td>
           <td style="padding:12px;">{{nombre_estado}}</td>
           <td style="padding:12px; display:flex; gap:8px; flex-wrap:wrap;">
             <form method="POST" action="index.php?page=DoctoresController&action=confirmarLlegada"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--outline" type="submit">En espera</button></form>

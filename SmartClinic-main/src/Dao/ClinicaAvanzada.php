@@ -22,25 +22,41 @@ class ClinicaAvanzada extends Table
         return $row ?: null;
     }
 
+    /**
+     * Obtiene la agenda completa del médico con la ubicación de cada cita.
+     */
     public static function getAgendaDoctor(int $medicoId): array
     {
         $sql = "SELECT c.*, p.nombres AS paciente_nombres, p.apellidos AS paciente_apellidos,
-                       p.telefono AS paciente_telefono, ec.nombre_estado
+                       p.telefono AS paciente_telefono, ec.nombre_estado,
+                       cs.nombre AS centro_nombre, mcs.consultorio
                 FROM cita c
                 INNER JOIN paciente p ON c.paciente_id = p.id
                 INNER JOIN estado_cita ec ON c.estado_id = ec.id
+                INNER JOIN centro_salud cs ON c.centro_salud_id = cs.id
+                INNER JOIN medico_centro_salud mcs
+                    ON mcs.medico_id = c.medico_id
+                   AND mcs.centro_salud_id = c.centro_salud_id
                 WHERE c.medico_id = :medico_id
                 ORDER BY c.fecha_hora ASC";
         return parent::obtenerRegistros($sql, ['medico_id' => $medicoId]);
     }
 
+    /**
+     * Obtiene la sala de espera de hoy con centro y consultorio.
+     */
     public static function getSalaEspera(int $medicoId): array
     {
         $sql = "SELECT c.*, p.nombres AS paciente_nombres, p.apellidos AS paciente_apellidos,
-                       p.telefono AS paciente_telefono, ec.nombre_estado
+                       p.telefono AS paciente_telefono, ec.nombre_estado,
+                       cs.nombre AS centro_nombre, mcs.consultorio
                 FROM cita c
                 INNER JOIN paciente p ON c.paciente_id = p.id
                 INNER JOIN estado_cita ec ON c.estado_id = ec.id
+                INNER JOIN centro_salud cs ON c.centro_salud_id = cs.id
+                INNER JOIN medico_centro_salud mcs
+                    ON mcs.medico_id = c.medico_id
+                   AND mcs.centro_salud_id = c.centro_salud_id
                 WHERE c.medico_id = :medico_id
                   AND c.estado_id IN (2, 6, 7)
                   AND DATE(c.fecha_hora) = CURDATE()

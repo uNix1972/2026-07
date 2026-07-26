@@ -4,6 +4,7 @@ namespace Controllers;
 use Views\Renderer;
 use Dao\Producto as DaoProducto;
 use Dao\AjusteInventario as DaoAjusteInventario;
+use Dao\CentroSalud as DaoCentroSalud;
 use Dao\MovimientoInventario as DaoMovimientoInventario;
 use Utilities\Security;
 use Utilities\Site;
@@ -192,39 +193,155 @@ class InventarioController extends PrivateController
 
     private function ajustar(): void
     {
-        if ($_SERVER["REQUEST_METHOD"] === "POST") {
-            if (!Security::validateCsrfPost()) {
-                Renderer::render("inventario_ajustar", ["productos" => DaoProducto::getActivos(), "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."]);
-                return;
-            }
+        $defaults = [
+            "producto_id" => 0,
+            "centro_salud_id" => 0,
+            "tipo_ajuste" => "ENTRADA",
+            "cantidad" => "",
+            "motivo" => ""
+        ];
 
+        if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $productoId = Validators::sanitizeId($_POST["producto_id"] ?? 0);
-            $tipoAjuste = ($_POST["tipo_ajuste"] ?? "") === "SALIDA" ? "SALIDA" : "ENTRADA";
+            $centroSaludId = Validators::sanitizeId(
+                $_POST["centro_salud_id"] ?? 0
+            );
+            $tipoAjuste = strval($_POST["tipo_ajuste"] ?? "");
             $cantidad = Validators::sanitizeInt($_POST["cantidad"] ?? 0, 1);
             $motivo = Validators::sanitizeString($_POST["motivo"] ?? "");
 
-            $producto = $productoId !== null ? DaoProducto::getById($productoId) : null;
+            $defaults = [
+                "producto_id" => $productoId ?? 0,
+                "centro_salud_id" => $centroSaludId ?? 0,
+                "tipo_ajuste" => in_array(
+                    $tipoAjuste,
+                    ["ENTRADA", "SALIDA"],
+                    true
+                ) ? $tipoAjuste : "ENTRADA",
+                "cantidad" => $cantidad ?? "",
+                "motivo" => $motivo
+            ];
 
-            if ($productoId === null || $producto === null || $cantidad === null || $motivo === "") {
-                Renderer::render("inventario_ajustar", ["productos" => DaoProducto::getActivos(), "error" => "Todos los campos son obligatorios y la cantidad debe ser mayor a cero."]);
+            if (!Security::validateCsrfPost()) {
+                $this->renderAjuste(
+                    $defaults,
+                    "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
+                );
+                return;
+            }
+
+            $producto = $productoId !== null ? DaoProducto::getById($productoId) : null;
+            $centro = $centroSaludId !== null
+                ? DaoCentroSalud::getById($centroSaludId)
+                : null;
+
+            if (
+                $productoId === null
+                || !$producto
+                || ($producto["estado"] ?? "") !== "ACT"
+                || $centroSaludId === null
+                || !$centro
+                || ($centro["estado"] ?? "") !== "ACT"
+                || !in_array($tipoAjuste, ["ENTRADA", "SALIDA"], true)
+                || $cantidad === null
+                || $motivo === ""
+            ) {
+                $this->renderAjuste(
+                    $defaults,
+                    "Todos los campos son obligatorios, el producto y centro deben estar activos, y la cantidad debe ser mayor a cero."
+                );
                 return;
             }
 
             if ($tipoAjuste === "SALIDA" && $cantidad > intval($producto["stock_actual"])) {
-                Renderer::render("inventario_ajustar", ["productos" => DaoProducto::getActivos(), "error" => "No hay suficiente stock disponible para registrar esta salida."]);
+                $this->renderAjuste(
+                    $defaults,
+                    "No hay suficiente stock disponible para registrar esta salida."
+                );
                 return;
             }
 
-            $delta = $tipoAjuste === "SALIDA" ? -$cantidad : $cantidad;
-            DaoProducto::ajustarStock($productoId, $delta);
-            DaoAjusteInventario::insert($productoId, $tipoAjuste, $cantidad, $motivo, Security::getUserId());
-            AuditLogger::log('ajustar', 'Inventario', "Ajuste de stock ($tipoAjuste) sobre " . $producto["nombre"] . ": $cantidad", ['producto_id' => $productoId]);
+            try {
+                $adjustmentId =
+                    DaoAjusteInventario::registerWithStockChange(
+                        $productoId,
+                        $centroSaludId,
+                        $tipoAjuste,
+                        $cantidad,
+                        $motivo,
+                        Security::getUserId()
+                    );
+            } catch (\DomainException $error) {
+                $this->renderAjuste($defaults, $error->getMessage());
+                return;
+            } catch (\Throwable $error) {
+                error_log(
+                    "No se pudo registrar el ajuste de inventario: "
+                    . $error->getMessage()
+                );
+                $this->renderAjuste(
+                    $defaults,
+                    "No fue posible registrar el ajuste. Intente nuevamente."
+                );
+                return;
+            }
+
+            AuditLogger::log(
+                "ajustar",
+                "Inventario",
+                "Ajuste de stock ($tipoAjuste) sobre "
+                    . $producto["nombre"]
+                    . " en "
+                    . $centro["nombre"]
+                    . ": $cantidad",
+                [
+                    "ajuste_id" => $adjustmentId,
+                    "producto_id" => $productoId,
+                    "centro_salud_id" => $centroSaludId
+                ]
+            );
 
             Site::redirectTo("index.php?page=InventarioController&action=index");
             exit;
         }
 
-        Renderer::render("inventario_ajustar", ["productos" => DaoProducto::getActivos()]);
+        $this->renderAjuste($defaults);
+    }
+
+    private function renderAjuste(
+        array $values,
+        string $error = ""
+    ): void {
+        $productoId = intval($values["producto_id"] ?? 0);
+        $centroSaludId = intval($values["centro_salud_id"] ?? 0);
+        $productos = DaoProducto::getActivos();
+        $centros = DaoCentroSalud::getActivos();
+
+        foreach ($productos as &$producto) {
+            $producto["selected"] = intval($producto["id"]) === $productoId;
+        }
+        unset($producto);
+
+        foreach ($centros as &$centro) {
+            $centro["selected"] = intval($centro["id"]) === $centroSaludId;
+        }
+        unset($centro);
+
+        Renderer::render("inventario_ajustar", [
+            "productos" => $productos,
+            "centros" => $centros,
+            "tipoEntrada" =>
+                ($values["tipo_ajuste"] ?? "ENTRADA") === "ENTRADA",
+            "tipoSalida" =>
+                ($values["tipo_ajuste"] ?? "") === "SALIDA",
+            "cantidad" => $values["cantidad"] ?? "",
+            "motivo" => $values["motivo"] ?? "",
+            "sinProductos" => count($productos) === 0,
+            "sinCentros" => count($centros) === 0,
+            "puedeGuardar" =>
+                count($productos) > 0 && count($centros) > 0,
+            "error" => $error
+        ]);
     }
 
     /**

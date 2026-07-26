@@ -79,7 +79,19 @@ class ReportesController extends PrivateController
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename=smartclinic_reporte_citas.csv');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['ID', 'Fecha', 'Paciente', 'Medico', 'Especialidad', 'Estado']);
+        fputcsv(
+            $out,
+            [
+                'ID',
+                'Fecha',
+                'Paciente',
+                'Medico',
+                'Especialidad',
+                'Centro de Salud',
+                'Consultorio',
+                'Estado',
+            ]
+        );
         foreach ($citas as $cita) {
             fputcsv($out, [
                 $cita['id'] ?? '',
@@ -87,6 +99,8 @@ class ReportesController extends PrivateController
                 trim(($cita['paciente_nombres'] ?? '') . ' ' . ($cita['paciente_apellidos'] ?? '')),
                 trim(($cita['medico_nombres'] ?? '') . ' ' . ($cita['medico_apellidos'] ?? '')),
                 $cita['nombre_especialidad'] ?? '',
+                $cita['centro_nombre'] ?? '',
+                $cita['consultorio'] ?? '',
                 $cita['nombre_estado'] ?? '',
             ]);
         }

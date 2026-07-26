@@ -707,6 +707,7 @@ CREATE TABLE IF NOT EXISTS proveedor (
 CREATE TABLE IF NOT EXISTS ajuste_inventario (
     id INT AUTO_INCREMENT PRIMARY KEY,
     producto_id INT NOT NULL,
+    centro_salud_id INT NULL,
     tipo_ajuste ENUM('ENTRADA', 'SALIDA') NOT NULL,
     cantidad INT NOT NULL,
     motivo VARCHAR(255) NOT NULL,
@@ -785,9 +786,17 @@ CREATE TABLE IF NOT EXISTS medico_centro_salud (
     centro_salud_id INT NOT NULL,
     consultorio VARCHAR(30) NOT NULL,
     estado CHAR(3) NOT NULL DEFAULT 'ACT',
+    consultorio_activo VARCHAR(30)
+        AS (
+            CASE
+                WHEN estado = 'ACT' THEN TRIM(consultorio)
+                ELSE NULL
+            END
+        ) PERSISTENT,
     fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_medico_centro_salud (medico_id, centro_salud_id),
+    UNIQUE KEY uq_centro_consultorio_activo (centro_salud_id, consultorio_activo),
     FOREIGN KEY (medico_id) REFERENCES medico(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (centro_salud_id) REFERENCES centro_salud(id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
@@ -809,8 +818,143 @@ INSERT IGNORE INTO medico_centro_salud
 SELECT
     m.id,
     cs.id,
-    '01',
+    LPAD(m.id, 2, '0'),
     'ACT'
 FROM medico m
 JOIN centro_salud cs
     ON cs.codigo = 'SMARTCLINIC';
+
+-- cambios para aplicar centros de salud a los ajustes de inventario
+
+ALTER TABLE ajuste_inventario
+    ADD COLUMN IF NOT EXISTS centro_salud_id INT NULL AFTER producto_id;
+
+UPDATE ajuste_inventario ai
+JOIN centro_salud cs
+    ON cs.codigo = 'SMARTCLINIC'
+SET ai.centro_salud_id = cs.id
+WHERE ai.centro_salud_id IS NULL;
+
+ALTER TABLE ajuste_inventario
+    MODIFY COLUMN centro_salud_id INT NOT NULL;
+
+SET @fk_ajuste_inventario_centro_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'ajuste_inventario'
+      AND CONSTRAINT_NAME = 'fk_ajuste_inventario_centro_salud'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+);
+
+SET @fk_ajuste_inventario_centro_sql = IF(
+    @fk_ajuste_inventario_centro_exists = 0,
+    'ALTER TABLE ajuste_inventario ADD CONSTRAINT fk_ajuste_inventario_centro_salud FOREIGN KEY (centro_salud_id) REFERENCES centro_salud (id) ON DELETE RESTRICT ON UPDATE CASCADE',
+    'DO 1'
+);
+
+PREPARE fk_ajuste_inventario_centro_statement
+    FROM @fk_ajuste_inventario_centro_sql;
+EXECUTE fk_ajuste_inventario_centro_statement;
+DEALLOCATE PREPARE fk_ajuste_inventario_centro_statement;
+
+-- cambios para evitar consultorios duplicados en un centro de salud
+
+UPDATE medico_centro_salud mcs
+JOIN (
+    SELECT
+        active_assignments.id,
+        LPAD(
+            ROW_NUMBER() OVER (
+                PARTITION BY active_assignments.centro_salud_id
+                ORDER BY active_assignments.medico_id, active_assignments.id
+            ),
+            2,
+            '0'
+        ) AS nuevo_consultorio
+    FROM medico_centro_salud active_assignments
+    JOIN (
+        SELECT centro_salud_id
+        FROM medico_centro_salud
+        WHERE estado = 'ACT'
+        GROUP BY centro_salud_id
+        HAVING COUNT(*) > COUNT(DISTINCT TRIM(consultorio))
+    ) centros_duplicados
+        ON centros_duplicados.centro_salud_id =
+           active_assignments.centro_salud_id
+    WHERE active_assignments.estado = 'ACT'
+) habitaciones_unicas
+    ON habitaciones_unicas.id = mcs.id
+SET mcs.consultorio = habitaciones_unicas.nuevo_consultorio;
+
+ALTER TABLE medico_centro_salud
+    ADD COLUMN IF NOT EXISTS consultorio_activo VARCHAR(30)
+        AS (
+            CASE
+                WHEN estado = 'ACT' THEN TRIM(consultorio)
+                ELSE NULL
+            END
+        ) PERSISTENT
+        AFTER estado;
+
+SET @uq_centro_consultorio_activo_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'medico_centro_salud'
+      AND INDEX_NAME = 'uq_centro_consultorio_activo'
+);
+
+SET @uq_centro_consultorio_activo_sql = IF(
+    @uq_centro_consultorio_activo_exists = 0,
+    'ALTER TABLE medico_centro_salud ADD UNIQUE KEY uq_centro_consultorio_activo (centro_salud_id, consultorio_activo)',
+    'DO 1'
+);
+
+PREPARE uq_centro_consultorio_activo_statement
+    FROM @uq_centro_consultorio_activo_sql;
+EXECUTE uq_centro_consultorio_activo_statement;
+DEALLOCATE PREPARE uq_centro_consultorio_activo_statement;
+
+-- cambios para aplicar centros de salud a las citas
+
+ALTER TABLE cita
+    ADD COLUMN IF NOT EXISTS centro_salud_id INT NULL AFTER medico_id;
+
+UPDATE cita c
+SET c.centro_salud_id = (
+    SELECT mcs.centro_salud_id
+    FROM medico_centro_salud mcs
+    JOIN centro_salud cs
+        ON cs.id = mcs.centro_salud_id
+    WHERE mcs.medico_id = c.medico_id
+      AND mcs.estado = 'ACT'
+      AND cs.estado = 'ACT'
+    ORDER BY
+        CASE WHEN cs.codigo = 'SMARTCLINIC' THEN 0 ELSE 1 END,
+        mcs.id ASC
+    LIMIT 1
+)
+WHERE c.centro_salud_id IS NULL;
+
+ALTER TABLE cita
+    MODIFY COLUMN centro_salud_id INT NOT NULL;
+
+SET @fk_cita_medico_centro_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'cita'
+      AND CONSTRAINT_NAME = 'fk_cita_medico_centro'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+);
+
+SET @fk_cita_medico_centro_sql = IF(
+    @fk_cita_medico_centro_exists = 0,
+    'ALTER TABLE cita ADD CONSTRAINT fk_cita_medico_centro FOREIGN KEY (medico_id, centro_salud_id) REFERENCES medico_centro_salud (medico_id, centro_salud_id) ON DELETE RESTRICT ON UPDATE CASCADE',
+    'DO 1'
+);
+
+PREPARE fk_cita_medico_centro_statement FROM @fk_cita_medico_centro_sql;
+EXECUTE fk_cita_medico_centro_statement;
+DEALLOCATE PREPARE fk_cita_medico_centro_statement;

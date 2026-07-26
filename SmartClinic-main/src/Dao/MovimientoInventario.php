@@ -9,7 +9,8 @@ namespace Dao;
  * En el sistema existen dos formas de que el stock de un producto cambie:
  *
  *   1) Ajustes manuales (InventarioController::ajustar) -> se guardan en la
- *      tabla `ajuste_inventario` con tipo_ajuste ENTRADA o SALIDA.
+ *      tabla `ajuste_inventario` con tipo_ajuste ENTRADA o SALIDA y el centro
+ *      de salud donde ocurrió el movimiento.
  *
  *   2) Compras a proveedor (ComprasController::create/edit) -> el stock se
  *      incrementa directo con Producto::ajustarStock() y el detalle queda
@@ -42,6 +43,8 @@ class MovimientoInventario extends Table
      *   - origen            ('AJUSTE' | 'COMPRA')  de dónde vino el movimiento
      *   - referencia        (VARCHAR)   motivo del ajuste, o "Factura FC-0001 - Proveedor X" si es compra
      *   - usuario_id        (INT|NULL)
+     *   - centro_salud_id   (INT|NULL)  null para compras todavía globales
+     *   - centro_nombre     (VARCHAR)   centro del ajuste o "Inventario general"
      *
      * @param int|null    $productoId   Filtra por un producto específico (null = todos)
      * @param string|null $fechaInicio  Formato 'YYYY-MM-DD' (null = sin límite inferior)
@@ -66,9 +69,12 @@ class MovimientoInventario extends Table
                 ai.cantidad       AS cantidad,
                 'AJUSTE'          AS origen,
                 ai.motivo         AS referencia,
-                ai.usuario_id     AS usuario_id
+                ai.usuario_id     AS usuario_id,
+                ai.centro_salud_id AS centro_salud_id,
+                cs.nombre         AS centro_nombre
             FROM ajuste_inventario ai
             JOIN producto p ON p.id = ai.producto_id
+            JOIN centro_salud cs ON cs.id = ai.centro_salud_id
             WHERE (:producto_id_1 IS NULL OR ai.producto_id = :producto_id_1)
               AND (:fecha_inicio_1 IS NULL OR ai.fecha_ajuste >= :fecha_inicio_1)
               AND (:fecha_fin_1 IS NULL OR ai.fecha_ajuste < DATE_ADD(:fecha_fin_1, INTERVAL 1 DAY))
@@ -90,7 +96,9 @@ class MovimientoInventario extends Table
                 fcd.cantidad                                                AS cantidad,
                 'COMPRA'                                                    AS origen,
                 CONCAT('Factura ', fc.numero_factura, ' - ', pr.nombre)     AS referencia,
-                fc.usuario_id                                               AS usuario_id
+                fc.usuario_id                                               AS usuario_id,
+                NULL                                                        AS centro_salud_id,
+                'Inventario general'                                        AS centro_nombre
             FROM factura_compra_detalle fcd
             JOIN factura_compra fc ON fc.id = fcd.factura_compra_id
             JOIN proveedor pr      ON pr.id = fc.proveedor_id

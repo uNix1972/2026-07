@@ -23,9 +23,13 @@
                     <label style="display:block; font-weight:700; color:#0f172a; margin-bottom:0.5rem;">Paciente</label>
                     <select name="paciente_id" required {{if modo_lectura}}disabled{{endif modo_lectura}} style="width:100%; padding:0.95rem; border:1px solid #e2e8f0; border-radius:12px; font-size:1rem; {{if modo_lectura}}background:#f8fafc; color:#6b7280;{{endif modo_lectura}}">
                         {{foreach pacientes}}
-                        <option value="{{id}}" {{if selected}}selected{{endif selected}}>{{nombres}} {{apellidos}} ({{identidad}})</option>
+                        <option value="{{id}}" data-telefono="{{telefono}}" {{if selected}}selected{{endif selected}}>{{nombres}} {{apellidos}} ({{identidad}})</option>
                         {{endfor pacientes}}
                     </select>
+                    <div style="margin-top:8px;padding:10px 12px;background:#F8FAFC;border-left:3px solid #0260CB;color:#334155;">
+                        Teléfono para notificación:
+                        <strong id="patient_notification_phone">Sin teléfono registrado</strong>
+                    </div>
                 </div>
 
                 <div style="margin-bottom:1.5rem;">
@@ -34,6 +38,15 @@
                         {{foreach medicos}}
                         <option value="{{id}}" {{if selected}}selected{{endif selected}}>{{nombres}} {{apellidos}} - {{nombre_especialidad}}</option>
                         {{endfor medicos}}
+                    </select>
+                </div>
+
+                <div style="margin-bottom:1.5rem;">
+                    <label style="display:block; font-weight:700; color:#0f172a; margin-bottom:0.5rem;">Centro de salud y consultorio</label>
+                    <select name="centro_salud_id" required {{if modo_lectura}}disabled{{endif modo_lectura}} style="width:100%; padding:0.95rem; border:1px solid #e2e8f0; border-radius:12px; font-size:1rem; {{if modo_lectura}}background:#f8fafc; color:#6b7280;{{endif modo_lectura}}">
+                        {{foreach centros}}
+                        <option value="{{centro_salud_id}}" {{if selected}}selected{{endif selected}}>{{centro_nombre}} - Consultorio {{consultorio}}</option>
+                        {{endfor centros}}
                     </select>
                 </div>
 
@@ -88,16 +101,51 @@
 </div>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
+    var appointmentForm = document.querySelector('form[action*="CitasController&action=edit"]');
+    var readOnly = appointmentForm && appointmentForm.hasAttribute('readonly');
+    var pacienteSelect = document.querySelector('select[name="paciente_id"]');
+    var patientPhone = document.getElementById('patient_notification_phone');
     var medicoSelect = document.querySelector('select[name="medico_id"]');
+    var centroSelect = document.querySelector('select[name="centro_salud_id"]');
     var fechaInput = document.querySelector('input[name="fecha"]');
     var horaSelect = document.querySelector('select[name="hora"]');
+
+    function refreshPatientPhone() {
+      if (!pacienteSelect || !patientPhone) return;
+      var selectedOption = pacienteSelect.options[pacienteSelect.selectedIndex];
+      var phone = selectedOption ? (selectedOption.getAttribute('data-telefono') || '').trim() : '';
+      patientPhone.textContent = phone || 'Sin teléfono registrado';
+    }
+
+    function refreshCenters(resetSelection) {
+      if (readOnly || !medicoSelect || !centroSelect) return;
+
+      var currentValue = resetSelection ? '' : centroSelect.value;
+      centroSelect.disabled = true;
+      fetch('index.php?page=CitasController&action=availableCenters&medico_id=' + encodeURIComponent(medicoSelect.value))
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+          centroSelect.innerHTML = '<option value="">-- Selecciona un centro --</option>';
+          data.forEach(function (item) {
+            var option = document.createElement('option');
+            option.value = item.value;
+            option.textContent = item.label;
+            option.selected = String(item.value) === String(currentValue);
+            centroSelect.appendChild(option);
+          });
+          centroSelect.disabled = data.length === 0;
+        })
+        .catch(function () {
+          centroSelect.innerHTML = '<option value="">No se pudieron cargar los centros</option>';
+        });
+    }
 
     function refreshTimes() {
       if (!medicoSelect || !fechaInput || !horaSelect) return;
       if (!medicoSelect.value || !fechaInput.value) return;
     var currentCitaId = new URLSearchParams(window.location.search).get('id') || '';
 
-        fetch('index.php?page=CitasController&action=availableTimes&medico_id=' + encodeURIComponent(medicoSelect.value) + '&fecha=' + encodeURIComponent(fechaInput.value) + '&exclude_id=' + encodeURIComponent(currentCitaId))
+        fetch('index.php?page=CitasController&action=availableTimes&medico_id=' + encodeURIComponent(medicoSelect.value) + '&paciente_id=' + encodeURIComponent(pacienteSelect ? pacienteSelect.value : '') + '&fecha=' + encodeURIComponent(fechaInput.value) + '&exclude_id=' + encodeURIComponent(currentCitaId))
         .then(function (response) { return response.json(); })
         .then(function (data) {
           var currentValue = horaSelect.value;
@@ -114,8 +162,17 @@
         });
     }
 
-    medicoSelect && medicoSelect.addEventListener('change', refreshTimes);
+    medicoSelect && medicoSelect.addEventListener('change', function () {
+      refreshCenters(true);
+      refreshTimes();
+    });
+    pacienteSelect && pacienteSelect.addEventListener('change', function () {
+      refreshPatientPhone();
+      refreshTimes();
+    });
     fechaInput && fechaInput.addEventListener('change', refreshTimes);
+    refreshPatientPhone();
+    refreshCenters(false);
     refreshTimes();
   });
 </script>

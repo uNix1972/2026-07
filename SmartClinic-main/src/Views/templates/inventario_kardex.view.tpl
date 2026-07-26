@@ -77,6 +77,7 @@
                     <tr style="background:#033B9F; color:white;">
                         <th style="padding:15px; text-align:left;">Fecha</th>
                         <th style="padding:15px;">Producto</th>
+                        <th style="padding:15px;">Centro de salud</th>
                         <th style="padding:15px;">Tipo</th>
                         <th style="padding:15px;">Origen</th>
                         <th style="padding:15px;">Cantidad</th>
@@ -89,6 +90,7 @@
                     <tr style="border-bottom:1px solid #E5E7EB;">
                         <td style="padding:14px; vertical-align:middle;">{{fecha}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{producto_nombre}}</td>
+                        <td style="padding:14px; vertical-align:middle;">{{centro_nombre}}</td>
                         <td style="padding:14px; vertical-align:middle;">
                             {{if es_salida}}<span style="color:#D63031; font-weight:600;">Salida</span>{{endif es_salida}}
                             {{ifnot es_salida}}<span style="color:#0F9D58; font-weight:600;">Entrada</span>{{endifnot es_salida}}
