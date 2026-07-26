@@ -58,6 +58,11 @@
       "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M7 4h-2l-1 2H2v2h2l3.6 7.59-1.35 2.44C5.52 18.37 6.48 20 8 20h12v-2H8l1.1-2h7.45c.75 0 1.41-.41 1.75-1.03L21.7 8H6.21l-.94-2H7V4zM7 22a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm10 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4z'/></svg></span>&nbsp;Compras"
     },
     {
+      "id": "Menu_CentrosSalud",
+      "nav_url": "index.php?page=CentrosSaludController&action=index",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm1 11h-2v-3H8V8h3V5h2v3h3v2h-3v3z'/></svg></span>&nbsp;Centros de Salud"
+    },
+    {
       "id": "Menu_Doctor",
       "nav_url": "index.php?page=DoctoresController",
       "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 2a4 4 0 0 1 4 4v2h3v4h-3v8H8v-8H5V8h3V6a4 4 0 0 1 4-4z'/></svg></span>&nbsp;Portal Doctor"

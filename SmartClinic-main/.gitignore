@@ -9,3 +9,4 @@ composer.lock
 phpdoc.dist.xml
 .env
 logs
+rollback_backups/

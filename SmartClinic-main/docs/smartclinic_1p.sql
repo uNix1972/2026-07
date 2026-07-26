@@ -752,3 +752,65 @@ INSERT IGNORE INTO funciones_roles (funcionRolId, funcionId, rolId, frStatus, fr
     (67, 33, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59'),
     (68, 34, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59'),
     (69, 35, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59');
+
+-- cambios para agregar el catálogo de centros de salud
+
+CREATE TABLE IF NOT EXISTS centro_salud (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    codigo VARCHAR(30) NOT NULL UNIQUE,
+    nombre VARCHAR(150) NOT NULL,
+    tipo VARCHAR(50) NOT NULL DEFAULT 'Centro de Salud',
+    direccion VARCHAR(255) NOT NULL,
+    ciudad VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20) NULL,
+    email VARCHAR(150) NULL,
+    estado CHAR(3) NOT NULL DEFAULT 'ACT',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+INSERT IGNORE INTO funciones (funcionId, funcionNombre, funcionDescripcion, funcionStatus) VALUES
+    (36, 'Controllers\\CentrosSaludController', 'Controlador del catálogo de centros de salud', 'ACT'),
+    (37, 'Menu_CentrosSalud', 'Acceso al menú Centros de Salud', 'ACT');
+
+INSERT IGNORE INTO funciones_roles (funcionRolId, funcionId, rolId, frStatus, frFechaInicio, frFechaFin) VALUES
+    (70, 36, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59'),
+    (71, 37, 1, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59');
+
+-- cambios para asociar médicos con centros de salud
+
+CREATE TABLE IF NOT EXISTS medico_centro_salud (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    medico_id INT NOT NULL,
+    centro_salud_id INT NOT NULL,
+    consultorio VARCHAR(30) NOT NULL,
+    estado CHAR(3) NOT NULL DEFAULT 'ACT',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_medico_centro_salud (medico_id, centro_salud_id),
+    FOREIGN KEY (medico_id) REFERENCES medico(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (centro_salud_id) REFERENCES centro_salud(id) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+INSERT IGNORE INTO centro_salud
+    (codigo, nombre, tipo, direccion, ciudad, estado)
+VALUES
+    (
+        'SMARTCLINIC',
+        'SmartClinic Center',
+        'Clínica',
+        'Centro principal SmartClinic',
+        'Tegucigalpa',
+        'ACT'
+    );
+
+INSERT IGNORE INTO medico_centro_salud
+    (medico_id, centro_salud_id, consultorio, estado)
+SELECT
+    m.id,
+    cs.id,
+    '01',
+    'ACT'
+FROM medico m
+JOIN centro_salud cs
+    ON cs.codigo = 'SMARTCLINIC';
