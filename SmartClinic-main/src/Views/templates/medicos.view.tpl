@@ -19,7 +19,7 @@
             <div class="toolbar-row">
                 <div class="toolbar-field">
                     <label>Buscar</label>
-                    <input type="search" name="search" value="{{searchValue}}" placeholder="Buscar médico, especialidad o colegiatura" />
+                    <input type="search" name="search" value="{{searchValue}}" placeholder="Buscar médico, especialidad, colegiatura o centro" />
                 </div>
                 <div class="toolbar-field">
                     <label>Especialidad</label>
@@ -52,6 +52,7 @@
                     <th style="padding:15px;">Apellidos</th>
                     <th style="padding:15px;">N° Colegiatura</th>
                     <th style="padding:15px;">Teléfono</th>
+                    <th style="padding:15px;">Centros / Consultorios</th>
                     <th style="padding:15px;">Acciones</th>
                 </tr>
             </thead>
@@ -67,6 +68,7 @@
                     <td style="padding:14px; vertical-align:middle;">{{apellidos}}</td>
                     <td style="padding:14px; vertical-align:middle;">{{num_colegiatura}}</td>
                     <td style="padding:14px; vertical-align:middle;">{{telefono}}</td>
+                    <td style="padding:14px;vertical-align:middle;min-width:220px;">{{centros_salud_texto}}</td>
 
                     <td style="padding:14px; vertical-align:middle;">
 

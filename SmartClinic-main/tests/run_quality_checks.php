@@ -73,6 +73,25 @@ check(strpos($sql, 'CREATE TABLE IF NOT EXISTS receta_medica') !== false, 'tabla
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS pago_factura') !== false, 'tabla pagos documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS notificaciones') !== false, 'tabla notificaciones documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS password_reset_tokens') !== false, 'tabla recuperación de contraseña documentada');
+check(strpos($sql, '-- cambios para agregar el catálogo de centros de salud') !== false, 'bloque de cambios de centros de salud documentado');
+check(strpos($sql, 'CREATE TABLE IF NOT EXISTS centro_salud') !== false, 'tabla centros de salud documentada');
+check(strpos($sql, "Controllers\\\\CentrosSaludController") !== false, 'permiso del controlador de centros de salud documentado');
+check(is_file(__DIR__ . '/../src/Dao/CentroSalud.php'), 'DAO comentado de centros de salud presente');
+check(is_file(__DIR__ . '/../src/Controllers/CentrosSaludController.php'), 'controlador de centros de salud presente');
+check(is_file(__DIR__ . '/../src/Views/templates/centros_salud.view.tpl'), 'vista del catálogo de centros de salud presente');
+check(strpos($sql, 'CREATE TABLE IF NOT EXISTS medico_centro_salud') !== false, 'relación médico-centro documentada');
+check(strpos($sql, "'SmartClinic Center'") !== false, 'centro de salud predeterminado documentado');
+check(strpos($sql, "'01'") !== false, 'consultorio predeterminado para médicos existentes documentado');
+check(is_file(__DIR__ . '/../src/Dao/MedicoCentroSalud.php'), 'DAO comentado de relación médico-centro presente');
+
+$medicosDao = file_get_contents(__DIR__ . '/../src/Dao/Medicos.php');
+check(strpos($medicosDao, 'insertMedicoConCentros') !== false, 'alta transaccional de médico y centros presente');
+check(strpos($medicosDao, 'updateMedicoConCentros') !== false, 'edición transaccional de médico y centros presente');
+
+$medicoCreate = file_get_contents(__DIR__ . '/../src/Views/templates/medico_create.view.tpl');
+$medicoEdit = file_get_contents(__DIR__ . '/../src/Views/templates/medico_edit.view.tpl');
+check(strpos($medicoCreate, 'name="centro_ids[]"') !== false, 'alta de médico permite seleccionar centros');
+check(strpos($medicoEdit, 'name="centro_ids[]"') !== false, 'edición de médico permite seleccionar centros');
 
 
 $navConfig = file_get_contents(__DIR__ . '/../nav.config.json');
@@ -83,6 +102,7 @@ check(strpos($navConfig, 'PacientePortalController') !== false, 'menú portal pa
 check(strpos($navConfig, 'PagosController') !== false, 'menú pagos registrado');
 check(strpos($navConfig, 'NotificacionesController') !== false, 'menú notificaciones registrado');
 check(strpos($navConfig, 'BIController') !== false, 'menú BI registrado');
+check(strpos($navConfig, 'Menu_CentrosSalud') !== false, 'menú centros de salud registrado');
 
 $privateLayout = file_get_contents(__DIR__ . '/../src/Views/templates/privatelayout.view.tpl');
 check(strpos($privateLayout, 'skip-link') !== false, 'mejora de accesibilidad skip-link presente');
