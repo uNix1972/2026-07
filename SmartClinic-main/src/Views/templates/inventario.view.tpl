@@ -59,6 +59,12 @@
         </div>
     </div>
 
+    {{if errorEliminarProducto}}
+    <div style="background:#FEF2F2; border:1px solid #FCA5A5; border-radius:12px; padding:14px 18px; margin-bottom:20px; color:#991B1B;">
+        No se pudo eliminar "<strong>{{errorEliminarProducto}}</strong>": tiene compras registradas y no se puede borrar sin perder esa historia. Usa "Desactivar" en su lugar.
+    </div>
+    {{endif errorEliminarProducto}}
+
     <div id="buscar-producto" style="background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 4px 20px rgba(0,0,0,.08); margin-bottom:24px;">
         <form method="GET" action="index.php#buscar-producto" style="display:flex; flex-wrap:wrap; align-items:end; gap:14px;">
             <input type="hidden" name="page" value="InventarioController">
@@ -151,11 +157,18 @@
                                style="background:#0260CB; color:white; padding:8px 12px; border-radius:8px; text-decoration:none; margin-right:5px;">
                                 Editar
                             </a>
-                            <form method="POST" action="index.php?page=InventarioController&action=delete" style="display:inline;" data-confirm="¿Seguro que desea desactivar este producto?">
+                            <form method="POST" action="index.php?page=InventarioController&action=delete" style="display:inline; margin-right:5px;" data-confirm="¿Seguro que desea desactivar este producto? (esto no borra su historial, solo lo oculta de los combos de compras/ajustes)">
                                 <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
                                 <input type="hidden" name="id" value="{{id}}">
                                 <button type="submit" style="background:#D63031;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;">
                                     Desactivar
+                                </button>
+                            </form>
+                            <form method="POST" action="index.php?page=InventarioController&action=eliminar" style="display:inline;" data-confirm="¿ELIMINAR PERMANENTEMENTE este producto? Esta acción no se puede deshacer y borra también su historial de ajustes manuales. Si tiene compras registradas, no se podrá eliminar (usa Desactivar en ese caso).">
+                                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                <input type="hidden" name="id" value="{{id}}">
+                                <button type="submit" style="background:#7F1D1D;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;">
+                                    Eliminar
                                 </button>
                             </form>
                         </td>

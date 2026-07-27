@@ -86,4 +86,23 @@ class Producto extends Table
         $sql = "UPDATE producto SET estado = 'INA' WHERE id = :id";
         return parent::executeNonQuery($sql, ["id" => $id]);
     }
+
+    /**
+     * Borra el producto DE VERDAD (a diferencia de disable(), que solo lo
+     * marca como inactivo). OJO: esto es intencionalmente peligroso.
+     *
+     * - Si el producto tiene ajustes manuales en ajuste_inventario, la
+     *   base de datos los borra también en cascada (FK con
+     *   ON DELETE CASCADE) — ese historial se pierde para siempre.
+     * - Si el producto tiene compras en factura_compra_detalle, la base
+     *   de datos RECHAZA el borrado (FK con ON DELETE RESTRICT, a
+     *   propósito, para no perder el historial de una compra real) y
+     *   lanza una excepción PDOException. Quien llame a este método debe
+     *   capturarla y explicarle al usuario que use disable() en su lugar.
+     */
+    public static function delete(int $id): bool
+    {
+        $sql = "DELETE FROM producto WHERE id = :id";
+        return parent::executeNonQuery($sql, ["id" => $id]);
+    }
 }

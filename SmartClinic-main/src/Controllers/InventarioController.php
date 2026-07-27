@@ -34,6 +34,10 @@ class InventarioController extends PrivateController
                 $this->delete();
                 break;
 
+            case "eliminar":
+                $this->eliminar();
+                break;
+
             case "ajustar":
                 $this->ajustar();
                 break;
@@ -72,6 +76,12 @@ class InventarioController extends PrivateController
 
     private function index(): void
     {
+        // Aviso de "no se pudo eliminar" que llega por GET después de un
+        // redirect desde eliminar() (cuando la base de datos rechaza el
+        // borrado por tener compras registradas). Ver el catch en
+        // eliminar() para el detalle.
+        $errorEliminarProducto = trim((string) ($_GET["errorEliminar"] ?? ""));
+
         // --- Barra de búsqueda de producto para la tabla de INVENTARIO ---
         // Mismo componente que ya se usa en el Kárdex (kardex-autocomplete.js
         // + Utilities\Site::addEndScript): un <input> de texto que filtra en
@@ -324,6 +334,7 @@ class InventarioController extends PrivateController
         $urlPaginaSiguienteMovimientos = $paginaMovimientos < $totalPaginasMovimientos ? $filtrosMovimientosUrl . "&pageMovimientos=" . ($paginaMovimientos + 1) . "#movimientos-recientes" : "";
 
         Renderer::render("inventario", [
+            "errorEliminarProducto" => $errorEliminarProducto,
             "productos" => $productosPagina,
             "movimientosRecientes" => $movimientosRecientesPagina,
             "movFechaInicio" => $movFechaInicio ?? "",
@@ -465,6 +476,47 @@ class InventarioController extends PrivateController
             $producto = DaoProducto::getById($id);
             DaoProducto::disable($id);
             AuditLogger::log('eliminar', 'Inventario', 'Producto desactivado: ' . ($producto['nombre'] ?? ''), ['producto_id' => $id]);
+        }
+
+        Site::redirectTo("index.php?page=InventarioController&action=index");
+        exit;
+    }
+
+    /**
+     * Borrado DEFINITIVO de un producto (a diferencia de delete(), que solo
+     * lo desactiva). Johnny pidió explícitamente esta opción sabiendo que:
+     *  - si el producto tenía ajustes manuales, esos movimientos del
+     *    Kárdex se pierden con él (la base los borra en cascada);
+     *  - si el producto tiene compras registradas, la base de datos
+     *    RECHAZA el borrado (para no perder el historial de una compra
+     *    real) — ese caso se captura aquí para mostrar un aviso claro en
+     *    vez de una pantalla de error en blanco.
+     */
+    private function eliminar(): void
+    {
+        if ($_SERVER["REQUEST_METHOD"] !== "POST" || !Security::validateCsrfPost()) {
+            Site::redirectTo("index.php?page=InventarioController&action=index");
+            exit;
+        }
+
+        $id = Validators::sanitizeId($_POST["id"] ?? 0);
+        if ($id !== null) {
+            $producto = DaoProducto::getById($id);
+            $nombreProducto = $producto ? (string) $producto['nombre'] : '';
+
+            try {
+                DaoProducto::delete($id);
+                AuditLogger::log('eliminar', 'Inventario', 'Producto eliminado definitivamente: ' . $nombreProducto, ['producto_id' => $id]);
+            } catch (\PDOException $ex) {
+                // SQLSTATE 23000 = violación de llave foránea. Es el caso
+                // esperado cuando el producto tiene compras registradas
+                // (factura_compra_detalle usa ON DELETE RESTRICT a
+                // propósito). Se avisa al usuario en vez de dejar que la
+                // excepción reviente la página con un error 500 en blanco.
+                AuditLogger::log('error', 'Inventario', 'No se pudo eliminar (tiene compras registradas): ' . $nombreProducto, ['producto_id' => $id]);
+                Site::redirectTo("index.php?page=InventarioController&action=index&errorEliminar=" . urlencode($nombreProducto));
+                exit;
+            }
         }
 
         Site::redirectTo("index.php?page=InventarioController&action=index");
