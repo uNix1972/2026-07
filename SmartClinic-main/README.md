@@ -157,6 +157,21 @@ SmartClinic/
 
 Este paquete incluye también las mejoras solicitadas en la revisión: portal de doctores, portal de paciente, historial clínico, recetas, pago simulado, notificaciones internas, recuperación de contraseña, reportes exportables, BI básico, bitácora, respaldo/restauración y pruebas rápidas.
 
+## Expediente clínico por cita
+
+El portal médico permite registrar signos vitales, documentar la consulta,
+consultar los pacientes atendidos y descargar el expediente de cada cita en
+PDF. El portal del paciente muestra sus consultas finalizadas y permite
+descargar el mismo documento, siempre validando que la cita pertenezca al
+usuario autenticado.
+
+Las instalaciones nuevas crean la tabla `signos_vitales` desde
+`docs/smartclinic_1p.sql`. Para una base de datos existente ejecute una vez:
+
+```bash
+docker compose exec -T db mysql -uroot smartclinic_db < scripts/migrate_expediente_clinico.sql
+```
+
 Credenciales adicionales:
 
 ```text

@@ -22,7 +22,9 @@ class Error extends PublicController
             "error",
             [
                 "CLIENT_ERROR_CODE" => $error_code,
-                "CLIENT_ERROR_MSG" => $error_msg
+                "CLIENT_ERROR_MSG" => $error_msg,
+                "ERROR_CODE" => $error_code,
+                "ERROR_MSG" => \Utilities\Context::getContextByKey("ERROR_MSG")
             ]
         );
     }

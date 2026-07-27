@@ -7,6 +7,7 @@ use Dao\ClinicaAvanzada as Clinica;
 use Dao\Especialidad as DaoEspecialidad;
 use Dao\MedicoCentroSalud as DaoMedicoCentroSalud;
 use Dao\Medicos as DaoMedicos;
+use Utilities\ClinicalPdf;
 use Utilities\MessageNotifier;
 use Utilities\Security;
 use Utilities\Site;
@@ -24,6 +25,9 @@ class PacientePortalController extends PrivateController
             case 'pagar':
                 $this->pagar();
                 break;
+            case 'pdf':
+                $this->pdf();
+                break;
             default:
                 $this->index();
         }
@@ -33,13 +37,15 @@ class PacientePortalController extends PrivateController
     {
         $paciente = Clinica::getPacienteByUsuario(intval(Security::getUserId()));
         if (!$paciente) {
-            $paciente = ['id' => 1, 'nombres' => 'Paciente', 'apellidos' => 'Demo', 'telefono' => '', 'direccion' => ''];
+            http_response_code(403);
+            exit('La cuenta no está vinculada con un paciente.');
         }
         return $paciente;
     }
 
     private function index(): void
     {
+        Site::addLink('public/css/clinical-record.css');
         $paciente = $this->getPaciente();
         $citas = DaoCitas::getCitasByPaciente(intval($paciente['id']));
         Renderer::render('paciente_portal', [
@@ -50,6 +56,9 @@ class PacientePortalController extends PrivateController
             'paciente_telefono' => $paciente['telefono'] ?? '',
             'paciente_direccion' => $paciente['direccion'] ?? '',
             'citas' => $citas,
+            'expedientes' => Clinica::getCitasExpedientePaciente(
+                intval($paciente['id'])
+            ),
             'historial' => Clinica::getHistorialPaciente(intval($paciente['id'])),
             'recetas' => Clinica::getRecetasPaciente(intval($paciente['id'])),
             'medicos' => DaoMedicos::getAllMedicos(),
@@ -184,7 +193,13 @@ class PacientePortalController extends PrivateController
         }
         $citaId = intval($_POST['cita_id'] ?? 0);
         $total = floatval($_POST['total'] ?? 750.00);
-        if ($citaId > 0) {
+        $paciente = $this->getPaciente();
+        $cita = Clinica::getCitaExpediente($citaId);
+        if (
+            $citaId > 0
+            && $cita
+            && intval($cita['paciente_id']) === intval($paciente['id'])
+        ) {
             $transaccion = 'SIM-' . date('YmdHis') . '-' . random_int(100, 999);
             Clinica::crearPago($citaId, $total, 'Tarjeta demo', $transaccion);
             Clinica::actualizarEstadoCita($citaId, 2);
@@ -192,5 +207,27 @@ class PacientePortalController extends PrivateController
             \Utilities\AuditLogger::log('PAGO_SIMULADO', 'Paciente', 'Pago simulado aprobado', ['cita_id' => $citaId, 'total' => $total]);
         }
         Site::redirectTo('index.php?page=PacientePortalController&msg=' . urlencode('Pago simulado aprobado y recibo generado.'));
+    }
+
+    private function pdf(): void
+    {
+        $paciente = $this->getPaciente();
+        $cita = Clinica::getCitaExpediente(intval($_GET['cita_id'] ?? 0));
+        if (
+            !$cita
+            || intval($cita['paciente_id']) !== intval($paciente['id'])
+        ) {
+            http_response_code(403);
+            exit('Acceso denegado.');
+        }
+
+        $recetas = empty($cita['historial_id'])
+            ? []
+            : Clinica::getRecetasHistorial(intval($cita['historial_id']));
+        ClinicalPdf::download(
+            'expediente-cita-' . $cita['id'] . '.pdf',
+            $cita,
+            $recetas
+        );
     }
 }

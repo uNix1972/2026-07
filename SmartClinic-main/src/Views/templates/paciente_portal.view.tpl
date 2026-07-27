@@ -1,17 +1,24 @@
-<div class="container section-pad">
-  <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:22px;">
-    <div>
-      <h2 style="font-size:2.6rem; color:#111827; margin-bottom:8px;">Portal del paciente</h2>
-      <p style="color:#64748b;">Autoservicio web, citas, pago simulado, historial y recetas.</p>
+<div class="container section-pad clinical-page">
+  <header class="clinical-hero">
+    <div class="clinical-hero__content">
+      <span class="clinical-hero__eyebrow">SmartClinic · Mi salud</span>
+      <h1>Portal del paciente</h1>
+      <p>Consulte sus citas, signos vitales, historial médico y documentos clínicos protegidos.</p>
     </div>
-    <a href="index.php?page=HomeController" class="btn btn--outline">Volver al panel</a>
-  </div>
+    <div class="clinical-hero__actions">
+      <a href="index.php?page=HomeController" class="btn btn--outline">Volver al panel</a>
+    </div>
+  </header>
   {{if msg}}<div style="background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; padding:14px 18px; border-radius:14px; margin-bottom:16px;">{{msg}}</div>{{endif msg}}
 
   <section class="sc-panel-card" style="margin-bottom:22px;">
-    <h3>Perfil</h3>
-    <p><strong>{{paciente_nombres}} {{paciente_apellidos}}</strong></p>
-    <p style="color:#64748b;">Teléfono: {{paciente_telefono}} · Dirección: {{paciente_direccion}}</p>
+    <div class="clinical-profile">
+      <span class="clinical-profile__avatar">P</span>
+      <div>
+        <h3>{{paciente_nombres}} {{paciente_apellidos}}</h3>
+        <p>Teléfono: {{paciente_telefono}} · Dirección: {{paciente_direccion}}</p>
+      </div>
+    </div>
   </section>
 
   <div class="sc-two-columns">
@@ -41,6 +48,30 @@
     <section class="sc-panel-card"><h3>Historial médico</h3>{{if historial}}<div class="table-responsive"><table style="width:100%; border-collapse:collapse;"><tbody>{{foreach historial}}<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:12px;"><strong>{{fecha_hora}}</strong><br>{{diagnostico}}<br><span style="color:#64748b;">{{tratamiento}}</span></td></tr>{{endfor historial}}</tbody></table></div>{{endif historial}}{{ifnot historial}}<p style="color:#64748b;">Sin historial clínico registrado.</p>{{endifnot historial}}</section>
     <section class="sc-panel-card"><h3>Recetas y órdenes</h3>{{if recetas}}<div class="table-responsive"><table style="width:100%; border-collapse:collapse;"><tbody>{{foreach recetas}}<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:12px;"><strong>{{medicamento}}</strong><br>{{indicaciones}}<br><span style="color:#64748b;">{{fecha_emision}}</span></td></tr>{{endfor recetas}}</tbody></table></div>{{endif recetas}}{{ifnot recetas}}<p style="color:#64748b;">Sin recetas registradas.</p>{{endifnot recetas}}</section>
   </div>
+
+  <section class="sc-panel-card" style="margin-top:22px;">
+    <h3>Mi expediente por cita</h3>
+    <p class="clinical-section-intro">Consulte cada atención, sus signos vitales y descargue una copia PDF.</p>
+    {{if expedientes}}
+    <div class="table-responsive">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead><tr style="background:#F1F5F9;"><th style="padding:12px;">Cita</th><th style="padding:12px;">Médico / Centro</th><th style="padding:12px;">Signos vitales</th><th style="padding:12px;">Diagnóstico</th><th style="padding:12px;">PDF</th></tr></thead>
+        <tbody>
+        {{foreach expedientes}}
+        <tr style="border-bottom:1px solid #E5E7EB;">
+          <td style="padding:12px;">#{{id}}<br>{{fecha_hora}}<br><small>{{nombre_estado}}</small></td>
+          <td style="padding:12px;">{{medico_nombres}} {{medico_apellidos}}<br>{{nombre_especialidad}}<br><small>{{centro_nombre}}</small></td>
+          <td style="padding:12px;">Temp. {{temperatura}} °C<br>PA {{presion_sistolica}}/{{presion_diastolica}}<br>FC {{frecuencia_cardiaca}} · FR {{frecuencia_respiratoria}}<br>SpO₂ {{saturacion_oxigeno}}%</td>
+          <td style="padding:12px;">{{diagnostico}}</td>
+          <td style="padding:12px;"><a class="btn btn--primary" href="index.php?page=PacientePortalController&action=pdf&cita_id={{id}}">Descargar PDF</a></td>
+        </tr>
+        {{endfor expedientes}}
+        </tbody>
+      </table>
+    </div>
+    {{endif expedientes}}
+    {{ifnot expedientes}}<p>Aún no tiene citas registradas.</p>{{endifnot expedientes}}
+  </section>
 </div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {

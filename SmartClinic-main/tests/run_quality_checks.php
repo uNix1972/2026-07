@@ -75,6 +75,58 @@ check(is_file(__DIR__ . '/../src/Dao/ClinicaAvanzada.php'), 'DAO clínico avanza
 $sql = file_get_contents(__DIR__ . '/../docs/smartclinic_1p.sql');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS historial_medico') !== false, 'tabla historial médico documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS receta_medica') !== false, 'tabla recetas documentada');
+check(strpos($sql, 'CREATE TABLE IF NOT EXISTS signos_vitales') !== false, 'tabla signos vitales documentada');
+check(is_file(__DIR__ . '/../scripts/migrate_expediente_clinico.sql'), 'migración de expediente presente');
+$expedienteMigration = file_get_contents(
+    __DIR__ . '/../scripts/migrate_expediente_clinico.sql'
+);
+check(
+    strpos($sql, "Controllers\\\\DoctoresController") !== false,
+    'permiso del portal médico documentado'
+);
+check(
+    strpos($sql, "Controllers\\\\PacientePortalController") !== false,
+    'permiso del portal paciente documentado'
+);
+check(
+    strpos($expedienteMigration, "Menu_Doctor") !== false
+        && strpos($expedienteMigration, "Menu_PacientePortal") !== false,
+    'migración existente incorpora permisos y menús clínicos'
+);
+check(is_file(__DIR__ . '/../src/Utilities/SimplePdf.php'), 'generador PDF clínico presente');
+check(is_file(__DIR__ . '/../src/Utilities/ClinicalPdf.php'), 'PDF clínico visual presente');
+check(is_file(__DIR__ . '/../public/css/clinical-record.css'), 'estilos del expediente presentes');
+check(is_file(__DIR__ . '/../src/Views/templates/expediente_clinico.view.tpl'), 'vista de expediente por cita presente');
+$pdfPreview = (new \Utilities\ClinicalPdf())->build(
+    [
+        'id' => 18,
+        'fecha_hora' => '2026-07-27 09:30:00',
+        'nombre_estado' => 'Finalizada',
+        'paciente_nombres' => 'Paciente',
+        'paciente_apellidos' => 'Prueba',
+        'identidad' => '0801-2000-00001',
+        'medico_nombres' => 'Médico',
+        'medico_apellidos' => 'Prueba',
+        'nombre_especialidad' => 'Medicina General',
+        'centro_nombre' => 'SmartClinic Center',
+        'temperatura' => '36.7',
+        'presion_sistolica' => '118',
+        'presion_diastolica' => '76',
+        'frecuencia_cardiaca' => '72',
+        'frecuencia_respiratoria' => '16',
+        'saturacion_oxigeno' => '98',
+        'peso' => '68.5',
+        'talla' => '170',
+        'signos_notas' => 'Paciente estable.',
+        'motivo_consulta' => 'Control general',
+        'diagnostico' => 'Paciente clínicamente estable',
+        'tratamiento' => 'Continuar hábitos saludables',
+        'observaciones' => 'Control en seis meses',
+    ],
+    [['medicamento' => 'Indicaciones generales', 'indicaciones' => 'Hidratación adecuada']]
+);
+check(str_starts_with($pdfPreview, '%PDF-1.4'), 'PDF clínico genera un documento válido');
+check(strlen($pdfPreview) > 2500, 'PDF clínico contiene el expediente completo');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS pago_factura') !== false, 'tabla pagos documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS notificaciones') !== false, 'tabla notificaciones documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS password_reset_tokens') !== false, 'tabla recuperación de contraseña documentada');

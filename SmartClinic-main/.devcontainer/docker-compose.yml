@@ -8,6 +8,8 @@ services:
     command: sleep infinity
     ports:
       - "8080:80"
+    networks:
+      - smartclinic
     depends_on:
       - db
 
@@ -23,6 +25,13 @@ services:
     volumes:
       - smartclinic-mysql:/var/lib/mysql
       - ../docs/smartclinic_1p.sql:/docker-entrypoint-initdb.d/01_smartclinic.sql:ro
+    networks:
+      smartclinic:
+        aliases:
+          - db
 
 volumes:
   smartclinic-mysql:
+
+networks:
+  smartclinic:

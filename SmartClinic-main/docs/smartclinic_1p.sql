@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS cita (
     id INT AUTO_INCREMENT PRIMARY KEY,
     paciente_id INT NOT NULL,
     medico_id INT NOT NULL,
+    centro_salud_id INT NULL,
     estado_id INT NOT NULL,
     fecha_hora DATETIME NOT NULL,
     FOREIGN KEY (paciente_id) REFERENCES paciente (id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -571,6 +572,23 @@ CREATE TABLE IF NOT EXISTS receta_medica (
     FOREIGN KEY (historial_id) REFERENCES historial_medico(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
 
+CREATE TABLE IF NOT EXISTS signos_vitales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    cita_id INT NOT NULL UNIQUE,
+    temperatura DECIMAL(4,1) NULL,
+    presion_sistolica SMALLINT UNSIGNED NULL,
+    presion_diastolica SMALLINT UNSIGNED NULL,
+    frecuencia_cardiaca SMALLINT UNSIGNED NULL,
+    frecuencia_respiratoria SMALLINT UNSIGNED NULL,
+    saturacion_oxigeno DECIMAL(5,2) NULL,
+    peso DECIMAL(6,2) NULL,
+    talla DECIMAL(5,2) NULL,
+    notas VARCHAR(500) NULL,
+    fecha_registro DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (cita_id) REFERENCES cita(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
 CREATE TABLE IF NOT EXISTS pago_factura (
     id INT AUTO_INCREMENT PRIMARY KEY,
     cita_id INT NOT NULL UNIQUE,
@@ -614,8 +632,8 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 INSERT IGNORE INTO funciones (funcionId, funcionNombre, funcionDescripcion, funcionStatus) VALUES
     (18, 'ReportesController', 'Controlador de reportes operativos y exportación CSV', 'ACT'),
     (19, 'AuditController', 'Controlador de bitácora de auditoría', 'ACT'),
-    (20, 'DoctoresController', 'Portal de doctores, sala de espera e historial clínico', 'ACT'),
-    (21, 'PacientePortalController', 'Portal de autoservicio del paciente', 'ACT'),
+    (20, 'Controllers\\DoctoresController', 'Portal de doctores, sala de espera e historial clínico', 'ACT'),
+    (21, 'Controllers\\PacientePortalController', 'Portal de autoservicio del paciente', 'ACT'),
     (22, 'PagosController', 'Consulta de pagos y recibos simulados', 'ACT'),
     (23, 'NotificacionesController', 'Centro de notificaciones internas', 'ACT'),
     (24, 'BIController', 'Dashboard analítico de inteligencia de negocio', 'ACT'),
@@ -792,7 +810,7 @@ CREATE TABLE IF NOT EXISTS medico_centro_salud (
                 WHEN estado = 'ACT' THEN TRIM(consultorio)
                 ELSE NULL
             END
-        ) PERSISTENT,
+        ) STORED,
     fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_medico_centro_salud (medico_id, centro_salud_id),
@@ -825,9 +843,8 @@ JOIN centro_salud cs
     ON cs.codigo = 'SMARTCLINIC';
 
 -- cambios para aplicar centros de salud a los ajustes de inventario
-
-ALTER TABLE ajuste_inventario
-    ADD COLUMN IF NOT EXISTS centro_salud_id INT NULL AFTER producto_id;
+-- La columna centro_salud_id se crea directamente en ajuste_inventario.
+-- Equivale a una migración ADD COLUMN IF NOT EXISTS centro_salud_id.
 
 UPDATE ajuste_inventario ai
 JOIN centro_salud cs
@@ -887,15 +904,7 @@ JOIN (
     ON habitaciones_unicas.id = mcs.id
 SET mcs.consultorio = habitaciones_unicas.nuevo_consultorio;
 
-ALTER TABLE medico_centro_salud
-    ADD COLUMN IF NOT EXISTS consultorio_activo VARCHAR(30)
-        AS (
-            CASE
-                WHEN estado = 'ACT' THEN TRIM(consultorio)
-                ELSE NULL
-            END
-        ) PERSISTENT
-        AFTER estado;
+-- consultorio_activo se crea directamente con medico_centro_salud.
 
 SET @uq_centro_consultorio_activo_exists = (
     SELECT COUNT(*)
@@ -917,9 +926,7 @@ EXECUTE uq_centro_consultorio_activo_statement;
 DEALLOCATE PREPARE uq_centro_consultorio_activo_statement;
 
 -- cambios para aplicar centros de salud a las citas
-
-ALTER TABLE cita
-    ADD COLUMN IF NOT EXISTS centro_salud_id INT NULL AFTER medico_id;
+-- La columna se crea con cita; equivale a ADD COLUMN IF NOT EXISTS centro_salud_id.
 
 UPDATE cita c
 SET c.centro_salud_id = (

@@ -29,7 +29,10 @@ class ClinicaAvanzada extends Table
     {
         $sql = "SELECT c.*, p.nombres AS paciente_nombres, p.apellidos AS paciente_apellidos,
                        p.telefono AS paciente_telefono, ec.nombre_estado,
-                       cs.nombre AS centro_nombre, mcs.consultorio
+                       cs.nombre AS centro_nombre, mcs.consultorio,
+                       sv.temperatura, sv.presion_sistolica, sv.presion_diastolica,
+                       sv.frecuencia_cardiaca, sv.frecuencia_respiratoria,
+                       sv.saturacion_oxigeno, sv.peso, sv.talla, sv.notas AS signos_notas
                 FROM cita c
                 INNER JOIN paciente p ON c.paciente_id = p.id
                 INNER JOIN estado_cita ec ON c.estado_id = ec.id
@@ -37,6 +40,7 @@ class ClinicaAvanzada extends Table
                 INNER JOIN medico_centro_salud mcs
                     ON mcs.medico_id = c.medico_id
                    AND mcs.centro_salud_id = c.centro_salud_id
+                LEFT JOIN signos_vitales sv ON sv.cita_id = c.id
                 WHERE c.medico_id = :medico_id
                 ORDER BY c.fecha_hora ASC";
         return parent::obtenerRegistros($sql, ['medico_id' => $medicoId]);
@@ -142,6 +146,132 @@ class ClinicaAvanzada extends Table
                 WHERE c.paciente_id = :paciente_id
                 ORDER BY r.fecha_emision DESC";
         return parent::obtenerRegistros($sql, ['paciente_id' => $pacienteId]);
+    }
+
+    /**
+     * Pacientes que el médico ya atendió: poseen historia clínica o una cita
+     * finalizada. Las citas futuras no agregan pacientes a esta lista.
+     */
+    public static function getPacientesAtendidosDoctor(int $medicoId): array
+    {
+        $sql = "SELECT p.id, p.identidad, p.nombres, p.apellidos, p.telefono,
+                       COUNT(DISTINCT c.id) AS total_citas,
+                       MAX(c.fecha_hora) AS ultima_cita
+                FROM paciente p
+                INNER JOIN cita c ON c.paciente_id = p.id
+                LEFT JOIN historial_medico h ON h.cita_id = c.id
+                WHERE c.medico_id = :medico_id
+                  AND (h.id IS NOT NULL OR c.estado_id = 3)
+                GROUP BY p.id
+                ORDER BY ultima_cita DESC";
+        return parent::obtenerRegistros($sql, ['medico_id' => $medicoId]);
+    }
+
+    /**
+     * Expediente longitudinal de un paciente. Cuando se indica médico, limita
+     * el resultado a las citas atendidas por ese profesional.
+     */
+    public static function getCitasExpedientePaciente(
+        int $pacienteId,
+        ?int $medicoId = null
+    ): array {
+        $sql = "SELECT c.id, c.fecha_hora, c.medico_id, c.paciente_id,
+                       c.centro_salud_id, ec.nombre_estado,
+                       m.nombres AS medico_nombres,
+                       m.apellidos AS medico_apellidos,
+                       e.nombre_especialidad, cs.nombre AS centro_nombre,
+                       h.id AS historial_id, h.motivo_consulta,
+                       h.diagnostico, h.tratamiento, h.observaciones,
+                       sv.temperatura, sv.presion_sistolica,
+                       sv.presion_diastolica, sv.frecuencia_cardiaca,
+                       sv.frecuencia_respiratoria, sv.saturacion_oxigeno,
+                       sv.peso, sv.talla, sv.notas AS signos_notas
+                FROM cita c
+                INNER JOIN medico m ON m.id = c.medico_id
+                INNER JOIN centro_salud cs ON cs.id = c.centro_salud_id
+                LEFT JOIN especialidad e ON e.id = m.especialidad_id
+                INNER JOIN estado_cita ec ON ec.id = c.estado_id
+                LEFT JOIN historial_medico h ON h.cita_id = c.id
+                LEFT JOIN signos_vitales sv ON sv.cita_id = c.id
+                WHERE c.paciente_id = :paciente_id
+                  AND (h.id IS NOT NULL OR c.estado_id = 3)";
+        $params = ['paciente_id' => $pacienteId];
+        if ($medicoId !== null) {
+            $sql .= " AND c.medico_id = :medico_id";
+            $params['medico_id'] = $medicoId;
+        }
+        $sql .= " ORDER BY c.fecha_hora DESC";
+        return parent::obtenerRegistros($sql, $params);
+    }
+
+    public static function getCitaExpediente(int $citaId): ?array
+    {
+        $sql = "SELECT c.id, c.fecha_hora, c.medico_id, c.paciente_id,
+                       c.centro_salud_id, ec.nombre_estado,
+                       p.identidad, p.nombres AS paciente_nombres,
+                       p.apellidos AS paciente_apellidos, p.fecha_nacimiento,
+                       p.telefono, p.direccion,
+                       m.nombres AS medico_nombres,
+                       m.apellidos AS medico_apellidos,
+                       e.nombre_especialidad, cs.nombre AS centro_nombre,
+                       h.id AS historial_id, h.motivo_consulta,
+                       h.diagnostico, h.tratamiento, h.observaciones,
+                       sv.temperatura, sv.presion_sistolica,
+                       sv.presion_diastolica, sv.frecuencia_cardiaca,
+                       sv.frecuencia_respiratoria, sv.saturacion_oxigeno,
+                       sv.peso, sv.talla, sv.notas AS signos_notas
+                FROM cita c
+                INNER JOIN paciente p ON p.id = c.paciente_id
+                INNER JOIN medico m ON m.id = c.medico_id
+                INNER JOIN centro_salud cs ON cs.id = c.centro_salud_id
+                LEFT JOIN especialidad e ON e.id = m.especialidad_id
+                INNER JOIN estado_cita ec ON ec.id = c.estado_id
+                LEFT JOIN historial_medico h ON h.cita_id = c.id
+                LEFT JOIN signos_vitales sv ON sv.cita_id = c.id
+                WHERE c.id = :cita_id
+                LIMIT 1";
+        $row = parent::obtenerUnRegistro($sql, ['cita_id' => $citaId]);
+        return $row ?: null;
+    }
+
+    public static function guardarSignosVitales(
+        int $citaId,
+        array $datos
+    ): void {
+        $sql = "INSERT INTO signos_vitales
+                    (cita_id, temperatura, presion_sistolica,
+                     presion_diastolica, frecuencia_cardiaca,
+                     frecuencia_respiratoria, saturacion_oxigeno,
+                     peso, talla, notas)
+                VALUES
+                    (:cita_id, :temperatura, :presion_sistolica,
+                     :presion_diastolica, :frecuencia_cardiaca,
+                     :frecuencia_respiratoria, :saturacion_oxigeno,
+                     :peso, :talla, :notas)
+                ON DUPLICATE KEY UPDATE
+                    temperatura = VALUES(temperatura),
+                    presion_sistolica = VALUES(presion_sistolica),
+                    presion_diastolica = VALUES(presion_diastolica),
+                    frecuencia_cardiaca = VALUES(frecuencia_cardiaca),
+                    frecuencia_respiratoria = VALUES(frecuencia_respiratoria),
+                    saturacion_oxigeno = VALUES(saturacion_oxigeno),
+                    peso = VALUES(peso),
+                    talla = VALUES(talla),
+                    notas = VALUES(notas)";
+        $datos['cita_id'] = $citaId;
+        parent::executeNonQuery($sql, $datos);
+    }
+
+    public static function getRecetasHistorial(int $historialId): array
+    {
+        $sql = "SELECT medicamento, indicaciones, fecha_emision
+                FROM receta_medica
+                WHERE historial_id = :historial_id
+                ORDER BY fecha_emision";
+        return parent::obtenerRegistros(
+            $sql,
+            ['historial_id' => $historialId]
+        );
     }
 
     public static function crearPago(int $citaId, float $total, string $metodo, string $transaccion): int
