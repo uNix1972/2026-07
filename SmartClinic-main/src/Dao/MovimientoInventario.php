@@ -9,7 +9,8 @@ namespace Dao;
  * En el sistema existen dos formas de que el stock de un producto cambie:
  *
  *   1) Ajustes manuales (InventarioController::ajustar) -> se guardan en la
- *      tabla `ajuste_inventario` con tipo_ajuste ENTRADA o SALIDA.
+ *      tabla `ajuste_inventario` con tipo_ajuste ENTRADA o SALIDA y el centro
+ *      de salud donde ocurrió el movimiento.
  *
  *   2) Compras a proveedor (ComprasController::create/edit) -> el stock se
  *      incrementa directo con Producto::ajustarStock() y el detalle queda
@@ -42,6 +43,9 @@ class MovimientoInventario extends Table
      *   - origen            ('AJUSTE' | 'COMPRA')  de dónde vino el movimiento
      *   - referencia        (VARCHAR)   motivo del ajuste, o "Factura FC-0001 - Proveedor X" si es compra
      *   - usuario_id        (INT|NULL)
+     *   - usuario_nombre    (VARCHAR)   quién registró el movimiento, o "Sistema" si no se guardó usuario
+     *   - centro_salud_id   (INT|NULL)  null para compras todavía globales
+     *   - centro_nombre     (VARCHAR)   centro del ajuste o "Inventario general"
      *
      * @param int|null    $productoId   Filtra por un producto específico (null = todos)
      * @param string|null $fechaInicio  Formato 'YYYY-MM-DD' (null = sin límite inferior)
@@ -66,9 +70,14 @@ class MovimientoInventario extends Table
                 ai.cantidad       AS cantidad,
                 'AJUSTE'          AS origen,
                 ai.motivo         AS referencia,
-                ai.usuario_id     AS usuario_id
+                ai.usuario_id     AS usuario_id,
+                COALESCE(u1.username, 'Sistema') AS usuario_nombre,
+                ai.centro_salud_id AS centro_salud_id,
+                cs.nombre         AS centro_nombre
             FROM ajuste_inventario ai
             JOIN producto p ON p.id = ai.producto_id
+            JOIN centro_salud cs ON cs.id = ai.centro_salud_id
+            LEFT JOIN usuario u1 ON u1.usercod = ai.usuario_id
             WHERE (:producto_id_1 IS NULL OR ai.producto_id = :producto_id_1)
               AND (:fecha_inicio_1 IS NULL OR ai.fecha_ajuste >= :fecha_inicio_1)
               AND (:fecha_fin_1 IS NULL OR ai.fecha_ajuste < DATE_ADD(:fecha_fin_1, INTERVAL 1 DAY))
@@ -90,11 +99,15 @@ class MovimientoInventario extends Table
                 fcd.cantidad                                                AS cantidad,
                 'COMPRA'                                                    AS origen,
                 CONCAT('Factura ', fc.numero_factura, ' - ', pr.nombre)     AS referencia,
-                fc.usuario_id                                               AS usuario_id
+                fc.usuario_id                                               AS usuario_id,
+                COALESCE(u2.username, 'Sistema')                            AS usuario_nombre,
+                NULL                                                        AS centro_salud_id,
+                'Inventario general'                                        AS centro_nombre
             FROM factura_compra_detalle fcd
-            JOIN factura_compra fc ON fc.id = fcd.factura_compra_id
-            JOIN proveedor pr      ON pr.id = fc.proveedor_id
-            JOIN producto p        ON p.id = fcd.producto_id
+            JOIN factura_compra fc  ON fc.id = fcd.factura_compra_id
+            JOIN proveedor pr       ON pr.id = fc.proveedor_id
+            JOIN producto p         ON p.id = fcd.producto_id
+            LEFT JOIN usuario u2    ON u2.usercod = fc.usuario_id
             WHERE (:producto_id_2 IS NULL OR fcd.producto_id = :producto_id_2)
               AND (:fecha_inicio_2 IS NULL OR fc.fecha_compra >= :fecha_inicio_2)
               AND (:fecha_fin_2 IS NULL OR fc.fecha_compra < DATE_ADD(:fecha_fin_2, INTERVAL 1 DAY))
@@ -140,22 +153,37 @@ class MovimientoInventario extends Table
      * simple y portable; con los volúmenes de un sistema de clínica pequeña
      * esto no representa un problema de rendimiento.
      *
-     * @param int|null    $productoId   Si se manda, obligatoriamente se recorre el
-     *                                  historial COMPLETO del producto desde el inicio
-     *                                  (ignorando fechaInicio) para que el saldo
-     *                                  acumulado sea correcto, y luego se recorta
-     *                                  la salida al rango de fechas pedido.
+     * @param int|null    $productoId     Si se manda, obligatoriamente se recorre el
+     *                                    historial COMPLETO del producto desde el inicio
+     *                                    (ignorando fechaInicio) para que el saldo
+     *                                    acumulado sea correcto, y luego se recorta
+     *                                    la salida al rango de fechas pedido.
+     * @param int|null    $centroSaludId  Igual de importante: el stock (producto.stock_actual)
+     *                                    sigue siendo GLOBAL, no por centro. Por eso el filtro
+     *                                    de centro NUNCA se manda a getMovimientos(): el saldo
+     *                                    acumulado siempre se calcula con el historial completo
+     *                                    (todos los centros + compras), y solo AL FINAL se
+     *                                    recortan de la lista visible las filas que no sean del
+     *                                    centro pedido. Así la columna "saldo acumulado" sigue
+     *                                    reflejando el stock real del sistema en cada momento,
+     *                                    aunque en pantalla solo se vean los movimientos de un
+     *                                    centro en particular. Las compras (que todavía no están
+     *                                    ligadas a ningún centro) quedan fuera de la vista en
+     *                                    cuanto se filtra por un centro específico, porque no
+     *                                    ocurrieron físicamente en ese centro.
      */
     public static function getMovimientosConSaldo(
         ?int $productoId = null,
         ?string $fechaInicio = null,
-        ?string $fechaFin = null
+        ?string $fechaFin = null,
+        ?int $centroSaludId = null
     ): array {
         // Se trae SIEMPRE el historial completo en orden ascendente (desde
         // el principio de los tiempos) para poder calcular un saldo
         // acumulado correcto; filtrar por fecha_inicio antes de sumar
         // rompería el acumulado (empezaría a contar desde un número
-        // arbitrario en vez de desde 0).
+        // arbitrario en vez de desde 0). Tampoco se filtra por centro aquí,
+        // por la misma razón (ver comentario del parámetro arriba).
         $movimientos = self::getMovimientos($productoId, null, $fechaFin, 'ASC');
 
         $saldosPorProducto = [];
@@ -180,7 +208,51 @@ class MovimientoInventario extends Table
             }));
         }
 
+        // Y se recorta también por centro de salud, si se pidió uno. Las
+        // compras tienen centro_salud_id = NULL (ver getMovimientos), así
+        // que un producto_id INT jamás las va a igualar: desaparecen de la
+        // vista filtrada por centro, tal como se explica arriba.
+        if ($centroSaludId !== null) {
+            $movimientos = array_values(array_filter($movimientos, function ($mov) use ($centroSaludId) {
+                return (int) ($mov['centro_salud_id'] ?? 0) === $centroSaludId;
+            }));
+        }
+
         return $movimientos;
+    }
+
+    /**
+     * Reconstruye el stock que tenía CADA producto al final de un día
+     * específico ("inventario histórico"), sumando y restando en orden
+     * cronológico todos los movimientos (ajustes + compras) ocurridos
+     * hasta esa fecha inclusive. Es la misma idea del saldo acumulado que
+     * ya usa el Kárdex, solo que aquí se calcula para todos los productos
+     * de una sola pasada en vez de uno a la vez.
+     *
+     * Devuelve un mapa [producto_id => saldo_a_esa_fecha]. Un producto que
+     * no aparece en el mapa significa que, hasta esa fecha, nunca tuvo
+     * ningún movimiento (pudo no haber existido todavía, o haber existido
+     * con stock en cero) — el llamador decide cómo mostrar ese caso.
+     *
+     * @param string $fechaCorte 'YYYY-MM-DD'. Se interpreta como "hasta el
+     *                           final de este día" (mismo criterio que usa
+     *                           fechaFin en getMovimientos).
+     */
+    public static function getSaldosPorProductoAFecha(string $fechaCorte): array
+    {
+        $movimientos = self::getMovimientos(null, null, $fechaCorte, 'ASC');
+
+        $saldosPorProducto = [];
+        foreach ($movimientos as $mov) {
+            $pid = (int) $mov['producto_id'];
+            if (!isset($saldosPorProducto[$pid])) {
+                $saldosPorProducto[$pid] = 0;
+            }
+            $delta = $mov['tipo_movimiento'] === 'SALIDA' ? -1 : 1;
+            $saldosPorProducto[$pid] += $delta * (int) $mov['cantidad'];
+        }
+
+        return $saldosPorProducto;
     }
 
     /**

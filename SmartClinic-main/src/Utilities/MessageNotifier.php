@@ -6,8 +6,13 @@ class MessageNotifier
 {
     private const DEFAULT_API_URL = 'https://wpssyr.com:9001/send-message';
 
-    public static function sendAppointmentSaved(array $paciente, array $medico, string $fechaHora, int $citaId): bool
-    {
+    public static function sendAppointmentSaved(
+        array $paciente,
+        array $medico,
+        array $ubicacion,
+        string $fechaHora,
+        int $citaId
+    ): bool {
         if (!self::isEnabled()) {
             return false;
         }
@@ -18,7 +23,12 @@ class MessageNotifier
             return false;
         }
 
-        $message = self::buildAppointmentMessage($paciente, $medico, $fechaHora);
+        $message = self::buildAppointmentMessage(
+            $paciente,
+            $medico,
+            $ubicacion,
+            $fechaHora
+        );
         return self::sendMessage($number, $message);
     }
 
@@ -102,12 +112,17 @@ class MessageNotifier
         return true;
     }
 
-    private static function buildAppointmentMessage(array $paciente, array $medico, string $fechaHora): string
-    {
+    private static function buildAppointmentMessage(
+        array $paciente,
+        array $medico,
+        array $ubicacion,
+        string $fechaHora
+    ): string {
         $patientName = self::fullName($paciente, 'paciente');
         $doctorName = self::fullName($medico, 'medico');
         $dateTime = self::parseDateTime($fechaHora);
-        $consultorio = self::getConsultorio($medico);
+        $centroNombre = trim((string)($ubicacion['centro_nombre'] ?? ''));
+        $consultorio = self::getConsultorio($ubicacion);
 
         return sprintf(
             "¡Buen día %s!\n\n" .
@@ -115,11 +130,13 @@ class MessageNotifier
             "Su cita médica con el Dr. %s ha sido agendada con éxito, puede revisar la siguiente información:\n\n" .
             "☀️ Día: %s\n" .
             "⏱️ Hora: %s\n" .
+            "Centro de salud: %s\n" .
             "Consultorio: %s",
             $patientName,
             $doctorName,
             self::formatSpanishDate($dateTime),
             $dateTime->format('h:i A'),
+            $centroNombre !== '' ? $centroNombre : 'Por confirmar',
             $consultorio
         );
     }
@@ -145,14 +162,14 @@ class MessageNotifier
         return intval($dateTime->format('j')) . ' de ' . $month . ' del ' . $dateTime->format('Y');
     }
 
-    private static function getConsultorio(array $medico): string
+    private static function getConsultorio(array $ubicacion): string
     {
-        $consultorio = trim((string)($medico['consultorio'] ?? ''));
+        $consultorio = trim((string)($ubicacion['consultorio'] ?? ''));
         if ($consultorio !== '') {
             return $consultorio;
         }
 
-        return self::config('WHATSAPP_DEFAULT_CONSULTORIO', '11');
+        return 'Por confirmar';
     }
 
     private static function fullName(array $data, string $fallback): string

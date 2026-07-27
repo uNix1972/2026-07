@@ -253,6 +253,7 @@
           <div class="appointment-patient">{{paciente}}</div>
           <div class="appointment-doctor">{{medico}}</div>
           <div class="appointment-specialty">{{especialidad}}</div>
+          <div class="appointment-specialty">{{centro}} · Consultorio {{consultorio}}</div>
         </div>
         <span class="appointment-status estado-{{estado_id}}">{{estado}}</span>
       </div>

@@ -291,6 +291,8 @@ class HomeController extends PrivateController
                         'medico' => ($cita['medico_nombres'] ?? '') . ' ' . ($cita['medico_apellidos'] ?? ''),
                         'medico_id' => $cita['medico_id'] ?? 0,
                         'especialidad' => $cita['nombre_especialidad'] ?? '',
+                        'centro' => $cita['centro_nombre'] ?? '',
+                        'consultorio' => $cita['consultorio'] ?? '',
                         'estado' => $cita['nombre_estado'] ?? 'Pendiente',
                         'estado_id' => $cita['estado_id'] ?? 1,
                     ];

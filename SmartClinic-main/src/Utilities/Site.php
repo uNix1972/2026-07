@@ -159,6 +159,11 @@ class Site
     public static function logError($ex, $errorCode)
     {
         error_log((string)$ex);
+        error_log(
+            '[' . date('Y-m-d H:i:s') . '] ' . (string)$ex . PHP_EOL,
+            3,
+            sys_get_temp_dir() . '/smartclinic-error.log'
+        );
         \Utilities\Context::setContext("ERROR_CODE", $errorCode);
 
         $showDetails = \Utilities\Context::getContextByKey('DEVELOPMENT') === '1';

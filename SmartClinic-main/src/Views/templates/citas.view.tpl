@@ -12,6 +12,24 @@
         {{endif showCrudActions}}
     </div>
 
+    {{if notificationSent}}
+    <div style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:12px 16px;margin-bottom:16px;">
+        La notificación fue enviada al paciente.
+    </div>
+    {{endif notificationSent}}
+
+    {{if notificationFailed}}
+    <div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:12px 16px;margin-bottom:16px;">
+        No se pudo enviar la notificación. Verifique el teléfono y la configuración de WhatsApp.
+    </div>
+    {{endif notificationFailed}}
+
+    {{if notificationUnavailable}}
+    <div style="background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;padding:12px 16px;margin-bottom:16px;">
+        Esta cita no está disponible para notificación.
+    </div>
+    {{endif notificationUnavailable}}
+
     <div class="list-toolbar">
         <form method="GET" action="index.php" class="toolbar-form">
             <input type="hidden" name="page" value="CitasController" />
@@ -19,7 +37,7 @@
             <div class="toolbar-row">
                 <div class="toolbar-field">
                     <label>Buscar</label>
-                    <input type="search" name="search" value="{{searchValue}}" placeholder="Buscar por paciente, médico, especialidad o fecha" />
+                    <input type="search" name="search" value="{{searchValue}}" placeholder="Buscar por paciente, médico, centro, consultorio o fecha" />
                 </div>
                 <div class="toolbar-field">
                     <label>Estado</label>
@@ -44,6 +62,7 @@
                     <th style="padding:15px;">Paciente</th>
                     <th style="padding:15px;">Médico</th>
                     <th style="padding:15px;">Especialidad</th>
+                    <th style="padding:15px;">Centro / Consultorio</th>
                     <th style="padding:15px;">Fecha y Hora</th>
                     <th style="padding:15px;">Estado</th>
                     <th style="padding:15px;">Acciones</th>
@@ -53,9 +72,10 @@
                 {{foreach citas}}
                 <tr style="border-bottom:1px solid #E5E7EB;">
                     <td style="padding:14px; vertical-align:middle;">{{id}}</td>
-                    <td style="padding:14px; vertical-align:middle;">{{paciente_nombres}} {{paciente_apellidos}}</td>
+                    <td style="padding:14px; vertical-align:middle;">{{paciente_nombres}} {{paciente_apellidos}}<br><small>{{paciente_telefono_texto}}</small></td>
                     <td style="padding:14px; vertical-align:middle;">{{medico_nombres}} {{medico_apellidos}}</td>
                     <td style="padding:14px; vertical-align:middle;">{{nombre_especialidad}}</td>
+                    <td style="padding:14px;vertical-align:middle;min-width:190px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td>
                     <td style="padding:14px; vertical-align:middle;">{{fecha_hora}}</td>
                     <td style="padding:14px; vertical-align:middle;">
                         <span style="background:#EFF6FF; color:#0b4bb8; padding:4px 12px; border-radius:999px; font-size:.85rem; font-weight:700;">
@@ -67,6 +87,20 @@
                         <a href="index.php?page=CitasController&action=edit&id={{id}}" style="background:#0260CB; color:white; padding:8px 12px; border-radius:8px; text-decoration:none; margin-right:5px;">
                             Editar
                         </a>
+                        {{if canNotify}}
+                        <form method="POST" action="index.php?page=CitasController&action=notify" style="display:inline;" data-confirm="¿Desea enviar ahora la notificación de esta cita al paciente?">
+                            <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                            <input type="hidden" name="id" value="{{id}}">
+                            <button type="submit" style="background:#047857;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;margin-right:5px;">
+                                Notificar
+                            </button>
+                        </form>
+                        {{endif canNotify}}
+                        {{if cannotNotify}}
+                        <button type="button" disabled title="Solo disponible para citas futuras activas con teléfono registrado" style="background:#E5E7EB;color:#64748B;padding:8px 12px;border-radius:8px;border:none;font:inherit;margin-right:5px;">
+                            Notificar
+                        </button>
+                        {{endif cannotNotify}}
                         <form method="POST" action="index.php?page=CitasController&action=delete" style="display:inline;" data-confirm="¿Seguro que desea cancelar esta cita? Esta acción no se puede deshacer.">
                             <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
                             <input type="hidden" name="id" value="{{id}}">

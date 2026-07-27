@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use Dao\Citas as DaoCitas;
+use Dao\MedicoCentroSalud as DaoMedicoCentroSalud;
 use Dao\Medicos as DaoMedicos;
 use Dao\Pacientes as DaoPacientes;
 use Utilities\Security;
@@ -43,6 +44,14 @@ class CitasController extends PublicController
                 $this->availableTimes();
                 break;
 
+            case 'availableCenters':
+                $this->availableCenters();
+                break;
+
+            case 'notify':
+                $this->notify();
+                break;
+
             case 'delete':
                 $this->delete();
                 break;
@@ -65,6 +74,16 @@ class CitasController extends PublicController
         $search = trim(strval($_GET['search'] ?? ''));
         $estadoFilter = trim(strval($_GET['estado'] ?? ''));
         $citas = DaoCitas::getAllCitas();
+        foreach ($citas as &$cita) {
+            $cita['canNotify'] = $this->canNotifyAppointment($cita);
+            $cita['cannotNotify'] = !$cita['canNotify'];
+            $cita['paciente_telefono_texto'] =
+                trim(strval($cita['paciente_telefono'] ?? '')) !== ''
+                    ? $cita['paciente_telefono']
+                    : 'Sin teléfono registrado';
+        }
+        unset($cita);
+
         if ($search !== '' || $estadoFilter !== '') {
             $searchLower = strtolower($search);
             $estadoLower = strtolower($estadoFilter);
@@ -75,6 +94,8 @@ class CitasController extends PublicController
                     || strpos(strtolower($item['medico_nombres'] ?? ''), $searchLower) !== false
                     || strpos(strtolower($item['medico_apellidos'] ?? ''), $searchLower) !== false
                     || strpos(strtolower($item['nombre_especialidad'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($item['centro_nombre'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($item['consultorio'] ?? ''), $searchLower) !== false
                     || strpos(strtolower($item['fecha_hora'] ?? ''), $searchLower) !== false;
                 $matchEstado = $estadoLower === ''
                     || strpos(strtolower($item['nombre_estado'] ?? ''), $estadoLower) !== false;
@@ -83,9 +104,9 @@ class CitasController extends PublicController
             });
         }
 
-        // Ordenar citas por fecha y hora ascendente (más antiguas primero)
+        // Ordenar la lista por fecha y hora descendente (más recientes primero).
         usort($citas, function ($a, $b) {
-            return strtotime($a['fecha_hora'] ?? '') - strtotime($b['fecha_hora'] ?? '');
+            return strtotime($b['fecha_hora'] ?? '') <=> strtotime($a['fecha_hora'] ?? '');
         });
 
         $this->viewData['citas'] = array_values($citas);
@@ -93,6 +114,11 @@ class CitasController extends PublicController
         $this->viewData['showCrudActions'] = $showCrudActions;
         $this->viewData['searchValue'] = $search;
         $this->viewData['estadoFilter'] = $estadoFilter;
+        $notificationStatus = trim(strval($_GET['notification'] ?? ''));
+        $this->viewData['notificationSent'] = $notificationStatus === 'sent';
+        $this->viewData['notificationFailed'] = $notificationStatus === 'failed';
+        $this->viewData['notificationUnavailable'] =
+            $notificationStatus === 'unavailable';
         $this->viewData['estadoOptions'] = [
             ['value' => '', 'label' => 'Todos', 'selected' => $estadoFilter === ''],
             ['value' => 'Pendiente', 'label' => 'Pendiente', 'selected' => strtolower($estadoFilter) === 'pendiente'],
@@ -107,13 +133,13 @@ class CitasController extends PublicController
 
     private function agendar(): void
     {
-        $medicos = DaoMedicos::getAllMedicos();
-        $pacientes = DaoPacientes::getAllPacientes();
         $defaults = [
             'paciente_id' => 0,
             'medico_id' => 0,
+            'centro_salud_id' => 0,
             'fecha' => '',
             'hora' => '',
+            'notify_patient' => false,
             'error' => '',
             'timeOptions' => $this->getTimeOptions(),
             'minDate' => $this->getMinDate(),
@@ -121,72 +147,124 @@ class CitasController extends PublicController
         ];
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $pacienteId = \Utilities\Validators::sanitizeId($_POST['paciente_id'] ?? 0);
+            $medicoId = \Utilities\Validators::sanitizeId($_POST['medico_id'] ?? 0);
+            $centroSaludId =
+                \Utilities\Validators::sanitizeId($_POST['centro_salud_id'] ?? 0);
+            $fecha = \Utilities\Validators::sanitizeDate($_POST['fecha'] ?? '');
+            $hora = \Utilities\Validators::sanitizeTime($_POST['hora'] ?? '');
+            $notifyPatient = ($_POST['notify_patient'] ?? '') === '1';
+
+            $defaults['paciente_id'] = $pacienteId ?? 0;
+            $defaults['medico_id'] = $medicoId ?? 0;
+            $defaults['centro_salud_id'] = $centroSaludId ?? 0;
+            $defaults['fecha'] = $fecha ?? '';
+            $defaults['hora'] = $hora ?? '';
+            $defaults['notify_patient'] = $notifyPatient;
+            $defaults['timeOptions'] = $this->getTimeOptions(
+                $hora ?? '',
+                $medicoId ?? 0,
+                $fecha ?? '',
+                0,
+                $pacienteId ?? 0
+            );
+
             if (!Security::validateCsrfPost()) {
                 Renderer::render('cita_agendar', array_merge($defaults, [
-                    'medicos' => $medicos,
-                    'pacientes' => $pacientes,
+                    'medicos' => $this->buildMedicos($medicoId ?? 0),
+                    'pacientes' => $this->buildPacientes($pacienteId ?? 0),
+                    'centros' =>
+                        $this->buildCentros($medicoId ?? 0, $centroSaludId ?? 0),
                     'error' => 'Solicitud inválida o expirada. Recargue la página e intente nuevamente.',
                 ]));
                 return;
             }
 
-            $pacienteId = \Utilities\Validators::sanitizeId($_POST['paciente_id'] ?? 0);
-            $medicoId = \Utilities\Validators::sanitizeId($_POST['medico_id'] ?? 0);
-            $fecha = \Utilities\Validators::sanitizeDate($_POST['fecha'] ?? '');
-            $hora = \Utilities\Validators::sanitizeTime($_POST['hora'] ?? '');
-
-            if ($pacienteId === null || $medicoId === null || $fecha === null || $hora === null) {
-                $errorMessage = 'Datos inválidos. Verifique los campos.';
+            if (
+                $pacienteId === null
+                || $medicoId === null
+                || $centroSaludId === null
+                || $fecha === null
+                || $hora === null
+            ) {
                 Renderer::render('cita_agendar', array_merge($defaults, [
-                    'medicos' => $medicos,
-                    'pacientes' => $pacientes,
+                    'medicos' => $this->buildMedicos($medicoId ?? 0),
+                    'pacientes' => $this->buildPacientes($pacienteId ?? 0),
+                    'centros' =>
+                        $this->buildCentros($medicoId ?? 0, $centroSaludId ?? 0),
+                    'error' => 'Datos inválidos. Verifique todos los campos.',
+                ]));
+                return;
+            }
+
+            $fecha = $this->forceYmdFormat($fecha);
+            $fechaHora = $fecha . 'T' . $hora;
+            $defaults['fecha'] = $fecha;
+
+            $errorMessage = $this->validateCita(
+                $pacienteId,
+                $medicoId,
+                $centroSaludId,
+                $fechaHora
+            );
+            if ($errorMessage !== null) {
+                Renderer::render('cita_agendar', array_merge($defaults, [
+                    'medicos' => $this->buildMedicos($medicoId),
+                    'pacientes' => $this->buildPacientes($pacienteId),
+                    'centros' => $this->buildCentros($medicoId, $centroSaludId),
                     'error' => $errorMessage,
                 ]));
                 return;
-            } else {
-                $fecha = $this->forceYmdFormat($fecha);
-                $fechaHora = $fecha && $hora ? $fecha . 'T' . $hora : '';
-
-                $defaults['paciente_id'] = $pacienteId;
-                $defaults['medico_id'] = $medicoId;
-                $defaults['fecha'] = $fecha;
-                $defaults['hora'] = $hora;
-                $defaults['timeOptions'] = $this->getTimeOptions($hora, $medicoId, $fecha);
-
-                $errorMessage = $this->validateCita($pacienteId, $medicoId, $fechaHora);
-                if ($errorMessage !== null) {
-                    foreach ($medicos as &$medicoItem) {
-                        $medicoItem['selected'] = intval($medicoItem['id']) === $medicoId;
-                    }
-                    unset($medicoItem);
-
-                    foreach ($pacientes as &$pacienteItem) {
-                        $pacienteItem['selected'] = intval($pacienteItem['id']) === $pacienteId;
-                    }
-                    unset($pacienteItem);
-
-                    Renderer::render('cita_agendar', array_merge($defaults, [
-                        'medicos' => $medicos,
-                        'pacientes' => $pacientes,
-                        'error' => $errorMessage,
-                    ]));
-
-                    return;
-                }
-
-                $newId = DaoCitas::insertCita($pacienteId, $medicoId, 1, $fechaHora);
-                AuditLogger::log('crear', 'Citas', 'Cita agendada para ' . $fechaHora, ['cita_id' => $newId, 'paciente_id' => $pacienteId, 'medico_id' => $medicoId]);
-                $paciente = DaoPacientes::getPacienteById($pacienteId) ?: [];
-                $medico = DaoMedicos::getMedicoById($medicoId) ?: [];
-                MessageNotifier::sendAppointmentSaved($paciente, $medico, $fechaHora, $newId);
-                Site::redirectTo('index.php?page=CitasController&action=index&success=1');
-                exit;
             }
+
+            $newId = DaoCitas::insertCita(
+                $pacienteId,
+                $medicoId,
+                $centroSaludId,
+                1,
+                $fechaHora
+            );
+            AuditLogger::log(
+                'crear',
+                'Citas',
+                'Cita agendada para ' . $fechaHora,
+                [
+                    'cita_id' => $newId,
+                    'paciente_id' => $pacienteId,
+                    'medico_id' => $medicoId,
+                    'centro_salud_id' => $centroSaludId,
+                    'notificacion_solicitada' => $notifyPatient,
+                ]
+            );
+
+            $notificationQuery = '';
+            if ($notifyPatient) {
+                $createdAppointment = DaoCitas::getCitaById($newId);
+                $sent = $createdAppointment
+                    ? $this->sendAppointmentNotification($createdAppointment)
+                    : false;
+                $notificationQuery = '&notification=' . ($sent ? 'sent' : 'failed');
+                AuditLogger::log(
+                    $sent ? 'notificar' : 'notificacion-fallida',
+                    'Citas',
+                    $sent
+                        ? 'Notificación inmediata enviada al crear la cita'
+                        : 'No se pudo enviar la notificación inmediata',
+                    ['cita_id' => $newId]
+                );
+            }
+
+            Site::redirectTo(
+                'index.php?page=CitasController&action=index&success=1'
+                . $notificationQuery
+            );
+            exit;
         }
 
         Renderer::render('cita_agendar', array_merge($defaults, [
-            'medicos' => $medicos,
-            'pacientes' => $pacientes,
+            'medicos' => $this->buildMedicos(),
+            'pacientes' => $this->buildPacientes(),
+            'centros' => [],
         ]));
     }
 
@@ -205,7 +283,14 @@ class CitasController extends PublicController
             if (!empty($cita['fecha_hora']) && ($cita['estado_id'] ?? 1) == 1) {
                 $citaDateTime = new \DateTime($cita['fecha_hora']);
                 if ($citaDateTime <= $oneHourAgo) {
-                    DaoCitas::updateCita($cita['id'], $cita['paciente_id'], $cita['medico_id'], 4, $cita['fecha_hora']);
+                    DaoCitas::updateCita(
+                        intval($cita['id']),
+                        intval($cita['paciente_id']),
+                        intval($cita['medico_id']),
+                        intval($cita['centro_salud_id']),
+                        4,
+                        $cita['fecha_hora']
+                    );
                     AuditLogger::log('auto-cancelar', 'Citas', 'Cita vencida cancelada automáticamente', ['cita_id' => $cita['id']]);
                 }
             }
@@ -264,11 +349,20 @@ class CitasController extends PublicController
 
             $pacienteId = \Utilities\Validators::sanitizeId($_POST['paciente_id'] ?? 0);
             $medicoId = \Utilities\Validators::sanitizeId($_POST['medico_id'] ?? 0);
+            $centroSaludId =
+                \Utilities\Validators::sanitizeId($_POST['centro_salud_id'] ?? 0);
             $estadoId = \Utilities\Validators::sanitizeInt($_POST['estado_id'] ?? 1, 1, 5);
             $fecha = \Utilities\Validators::sanitizeDate($_POST['fecha'] ?? '');
             $hora = \Utilities\Validators::sanitizeTime($_POST['hora'] ?? '');
 
-            if ($pacienteId === null || $medicoId === null || $estadoId === null || $fecha === null || $hora === null) {
+            if (
+                $pacienteId === null
+                || $medicoId === null
+                || $centroSaludId === null
+                || $estadoId === null
+                || $fecha === null
+                || $hora === null
+            ) {
                 Site::redirectTo('index.php?page=CitasController&action=edit&id=' . $id . '&error=invalid');
                 exit;
             } else {
@@ -276,7 +370,13 @@ class CitasController extends PublicController
                 $fechaHora = $fecha && $hora ? $fecha . 'T' . $hora : '';
 
                 if ($errorMessage === null) {
-                    $errorMessage = $this->validateCita($pacienteId, $medicoId, $fechaHora, $id);
+                    $errorMessage = $this->validateCita(
+                        $pacienteId,
+                        $medicoId,
+                        $centroSaludId,
+                        $fechaHora,
+                        $id
+                    );
                 }
                 if ($errorMessage !== null) {
                     $medicos = DaoMedicos::getAllMedicos();
@@ -305,8 +405,16 @@ class CitasController extends PublicController
                         'hora' => $hora,
                         'medicos' => $medicos,
                         'pacientes' => $pacientes,
+                        'centros' =>
+                            $this->buildCentros($medicoId, $centroSaludId),
                         'estados' => $estados,
-                        'timeOptions' => $this->getTimeOptions($hora, $medicoId, $fecha, $id),
+                        'timeOptions' => $this->getTimeOptions(
+                            $hora,
+                            $medicoId,
+                            $fecha,
+                            $id,
+                            $pacienteId
+                        ),
                         'minDate' => $this->getMinDate(),
                         'maxDate' => $this->getMaxDate(),
                         'modo_lectura' => $modoLectura,
@@ -316,8 +424,24 @@ class CitasController extends PublicController
                     return;
                 }
 
-                DaoCitas::updateCita($id, $pacienteId, $medicoId, $estadoId, $fechaHora);
-                AuditLogger::log('editar', 'Citas', 'Cita actualizada para ' . $fechaHora, ['cita_id' => $id, 'estado_id' => $estadoId]);
+                DaoCitas::updateCita(
+                    $id,
+                    $pacienteId,
+                    $medicoId,
+                    $centroSaludId,
+                    $estadoId,
+                    $fechaHora
+                );
+                AuditLogger::log(
+                    'editar',
+                    'Citas',
+                    'Cita actualizada para ' . $fechaHora,
+                    [
+                        'cita_id' => $id,
+                        'estado_id' => $estadoId,
+                        'centro_salud_id' => $centroSaludId,
+                    ]
+                );
                 Site::redirectTo('index.php?page=CitasController&action=index');
                 exit;
             }
@@ -389,8 +513,18 @@ class CitasController extends PublicController
             'hora' => $hora,
             'medicos' => $medicos,
             'pacientes' => $pacientes,
+            'centros' => $this->buildCentros(
+                intval($cita['medico_id']),
+                intval($cita['centro_salud_id'])
+            ),
             'estados' => $estados,
-            'timeOptions' => $this->getTimeOptions($hora, intval($cita['medico_id']), $fecha, intval($cita['id'])),
+            'timeOptions' => $this->getTimeOptions(
+                $hora,
+                intval($cita['medico_id']),
+                $fecha,
+                intval($cita['id']),
+                intval($cita['paciente_id'])
+            ),
             'minDate' => $this->getMinDate(),
             'maxDate' => $this->getMaxDate(),
             'modo_lectura' => $modoLectura,
@@ -403,6 +537,9 @@ class CitasController extends PublicController
     private function availableTimes(): void
     {
         $medicoId = \Utilities\Validators::sanitizeId($_GET['medico_id'] ?? 0);
+        $pacienteId = \Utilities\Validators::sanitizeId(
+            $_GET['paciente_id'] ?? 0
+        ) ?? 0;
         $fecha = \Utilities\Validators::sanitizeDate($_GET['fecha'] ?? '');
         // Permite excluir la cita actual al editar (para que su hora no aparezca como ocupada)
         $excludeId = \Utilities\Validators::sanitizeId($_GET['exclude_id'] ?? 0) ?? 0;
@@ -413,12 +550,133 @@ class CitasController extends PublicController
             exit;
         }
 
-        $timeOptions = $this->getTimeOptions('', $medicoId, $fecha, $excludeId);
+        $timeOptions = $this->getTimeOptions(
+            '',
+            $medicoId,
+            $fecha,
+            $excludeId,
+            $pacienteId
+        );
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(array_values(array_map(function ($option) {
             return ['value' => $option['value'], 'label' => $option['label']];
         }, $timeOptions)));
         exit;
+    }
+
+    private function availableCenters(): void
+    {
+        $medicoId = \Utilities\Validators::sanitizeId($_GET['medico_id'] ?? 0);
+        $centros = $medicoId === null
+            ? []
+            : DaoMedicoCentroSalud::getActivosByMedico($medicoId);
+
+        $options = array_map(
+            function (array $centro): array {
+                return [
+                    'value' => intval($centro['centro_salud_id']),
+                    'label' => $centro['centro_nombre']
+                        . ' - Consultorio ' . $centro['consultorio'],
+                    'consultorio' => $centro['consultorio'],
+                ];
+            },
+            $centros
+        );
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(array_values($options));
+        exit;
+    }
+
+    private function notify(): void
+    {
+        $this->authorizeCitas();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !Security::validateCsrfPost()) {
+            Site::redirectTo(
+                'index.php?page=CitasController&action=index&notification=unavailable'
+            );
+            exit;
+        }
+
+        $id = \Utilities\Validators::sanitizeId($_POST['id'] ?? 0);
+        $cita = $id !== null ? DaoCitas::getCitaById($id) : null;
+
+        if (!$cita || !$this->canNotifyAppointment($cita)) {
+            AuditLogger::log(
+                'notificacion-no-disponible',
+                'Citas',
+                'Intento de notificar una cita no elegible',
+                ['cita_id' => $id ?? 0]
+            );
+            Site::redirectTo(
+                'index.php?page=CitasController&action=index&notification=unavailable'
+            );
+            exit;
+        }
+
+        $sent = $this->sendAppointmentNotification($cita);
+        AuditLogger::log(
+            $sent ? 'notificar' : 'notificacion-fallida',
+            'Citas',
+            $sent
+                ? 'Notificación manual enviada al paciente'
+                : 'No se pudo enviar la notificación manual',
+            [
+                'cita_id' => $id,
+                'paciente_id' => intval($cita['paciente_id']),
+                'medico_id' => intval($cita['medico_id']),
+                'centro_salud_id' => intval($cita['centro_salud_id']),
+            ]
+        );
+
+        Site::redirectTo(
+            'index.php?page=CitasController&action=index&notification='
+            . ($sent ? 'sent' : 'failed')
+        );
+        exit;
+    }
+
+    private function canNotifyAppointment(array $cita): bool
+    {
+        $phone = trim(strval($cita['paciente_telefono'] ?? ''));
+        $estadoId = intval($cita['estado_id'] ?? 0);
+        $fechaHora = trim(strval($cita['fecha_hora'] ?? ''));
+
+        if ($phone === '' || $fechaHora === '' || in_array($estadoId, [3, 4, 5], true)) {
+            return false;
+        }
+
+        try {
+            return new \DateTime($fechaHora) > new \DateTime();
+        } catch (\Exception $error) {
+            return false;
+        }
+    }
+
+    private function sendAppointmentNotification(array $cita): bool
+    {
+        $paciente = [
+            'nombres' => $cita['paciente_nombres'] ?? '',
+            'apellidos' => $cita['paciente_apellidos'] ?? '',
+            'telefono' => $cita['paciente_telefono'] ?? '',
+        ];
+        $medico = [
+            'nombres' => $cita['medico_nombres'] ?? '',
+            'apellidos' => $cita['medico_apellidos'] ?? '',
+        ];
+        $ubicacion = [
+            'centro_nombre' => $cita['centro_nombre'] ?? '',
+            'consultorio' => $cita['consultorio'] ?? '',
+        ];
+
+        return MessageNotifier::sendAppointmentSaved(
+            $paciente,
+            $medico,
+            $ubicacion,
+            strval($cita['fecha_hora'] ?? ''),
+            intval($cita['id'] ?? 0)
+        );
     }
 
     private function delete(): void
@@ -448,9 +706,58 @@ class CitasController extends PublicController
         exit;
     }
 
-    private function validateCita(int $pacienteId, int $medicoId, string $fechaHoraRaw, int $excludeId = 0): ?string
+    private function buildMedicos(int $selectedId = 0): array
     {
-        if ($pacienteId <= 0 || $medicoId <= 0 || $fechaHoraRaw === '') {
+        $medicos = DaoMedicos::getAllMedicos();
+        foreach ($medicos as &$medico) {
+            $medico['selected'] = intval($medico['id']) === $selectedId;
+        }
+        unset($medico);
+
+        return $medicos;
+    }
+
+    private function buildPacientes(int $selectedId = 0): array
+    {
+        $pacientes = DaoPacientes::getAllPacientes();
+        foreach ($pacientes as &$paciente) {
+            $paciente['selected'] = intval($paciente['id']) === $selectedId;
+        }
+        unset($paciente);
+
+        return $pacientes;
+    }
+
+    private function buildCentros(int $medicoId, int $selectedId = 0): array
+    {
+        if ($medicoId <= 0) {
+            return [];
+        }
+
+        $centros = DaoMedicoCentroSalud::getActivosByMedico($medicoId);
+        foreach ($centros as &$centro) {
+            $centro['selected'] =
+                intval($centro['centro_salud_id']) === $selectedId;
+        }
+        unset($centro);
+
+        return $centros;
+    }
+
+    private function validateCita(
+        int $pacienteId,
+        int $medicoId,
+        int $centroSaludId,
+        string $fechaHoraRaw,
+        int $excludeId = 0
+    ): ?string
+    {
+        if (
+            $pacienteId <= 0
+            || $medicoId <= 0
+            || $centroSaludId <= 0
+            || $fechaHoraRaw === ''
+        ) {
             return 'Por favor completa todos los campos.';
         }
 
@@ -462,6 +769,14 @@ class CitasController extends PublicController
         $medico = DaoMedicos::getMedicoById($medicoId);
         if (!$medico) {
             return 'El médico seleccionado no existe.';
+        }
+
+        $ubicacion = DaoMedicoCentroSalud::getActivoByMedicoCentro(
+            $medicoId,
+            $centroSaludId
+        );
+        if (!$ubicacion) {
+            return 'El centro seleccionado no está asignado activamente al médico.';
         }
 
         $fechaHora = $this->parseFechaHora($fechaHoraRaw);
@@ -510,11 +825,107 @@ class CitasController extends PublicController
             return 'El médico ya tiene el límite de 18 citas para ese día.';
         }
 
-        if (!DaoCitas::checkDisponibilidad($medicoId, $pacienteId, $fechaHoraRaw, $excludeId)) {
-            return 'El médico o paciente ya tiene una cita en un horario cercano de 30 minutos.';
+        $conflicts = DaoCitas::getAvailabilityConflicts(
+            $medicoId,
+            $pacienteId,
+            $fechaHoraRaw,
+            $excludeId
+        );
+        if (count($conflicts) > 0) {
+            return $this->buildAvailabilityConflictMessage(
+                $conflicts,
+                $medicoId,
+                $pacienteId
+            );
         }
 
         return null;
+    }
+
+    private function buildAvailabilityConflictMessage(
+        array $conflicts,
+        int $medicoId,
+        int $pacienteId
+    ): string {
+        $doctorConflict = null;
+        $patientConflict = null;
+
+        foreach ($conflicts as $conflict) {
+            if (
+                $doctorConflict === null
+                && intval($conflict['medico_id'] ?? 0) === $medicoId
+            ) {
+                $doctorConflict = $conflict;
+            }
+            if (
+                $patientConflict === null
+                && intval($conflict['paciente_id'] ?? 0) === $pacienteId
+            ) {
+                $patientConflict = $conflict;
+            }
+        }
+
+        if (
+            $doctorConflict !== null
+            && $patientConflict !== null
+            && intval($doctorConflict['id']) === intval($patientConflict['id'])
+        ) {
+            return 'El médico '
+                . $this->conflictDoctorName($doctorConflict)
+                . ' y el paciente '
+                . $this->conflictPatientName($patientConflict)
+                . ' ya tienen una cita a las '
+                . $this->conflictTime($doctorConflict)
+                . '.';
+        }
+
+        $messages = [];
+        if ($doctorConflict !== null) {
+            $messages[] = 'El médico '
+                . $this->conflictDoctorName($doctorConflict)
+                . ' ya tiene una cita a las '
+                . $this->conflictTime($doctorConflict)
+                . ' con el paciente '
+                . $this->conflictPatientName($doctorConflict)
+                . '.';
+        }
+        if ($patientConflict !== null) {
+            $messages[] = 'El paciente '
+                . $this->conflictPatientName($patientConflict)
+                . ' ya tiene una cita a las '
+                . $this->conflictTime($patientConflict)
+                . ' con el médico '
+                . $this->conflictDoctorName($patientConflict)
+                . '.';
+        }
+
+        return count($messages) > 0
+            ? implode(' Además, ', $messages)
+            : 'El horario seleccionado ya no está disponible.';
+    }
+
+    private function conflictDoctorName(array $conflict): string
+    {
+        return trim(
+            strval($conflict['medico_nombres'] ?? '')
+            . ' '
+            . strval($conflict['medico_apellidos'] ?? '')
+        ) ?: 'seleccionado';
+    }
+
+    private function conflictPatientName(array $conflict): string
+    {
+        return trim(
+            strval($conflict['paciente_nombres'] ?? '')
+            . ' '
+            . strval($conflict['paciente_apellidos'] ?? '')
+        ) ?: 'seleccionado';
+    }
+
+    private function conflictTime(array $conflict): string
+    {
+        $timestamp = strtotime(strval($conflict['fecha_hora'] ?? ''));
+        return $timestamp !== false ? date('H:i', $timestamp) : 'la hora indicada';
     }
 
     private function getMinDateTime(): string
@@ -543,8 +954,13 @@ class CitasController extends PublicController
         return $maxDate->format('Y-m-d');
     }
 
-    private function getTimeOptions(string $selectedTime = '', int $medicoId = 0, string $date = '', int $excludeId = 0): array
-    {
+    private function getTimeOptions(
+        string $selectedTime = '',
+        int $medicoId = 0,
+        string $date = '',
+        int $excludeId = 0,
+        int $pacienteId = 0
+    ): array {
         $selectedTime = $this->normalizeTime($selectedTime);
 
         $times = [];
@@ -561,7 +977,12 @@ class CitasController extends PublicController
 
         $blockedTimes = [];
         if ($medicoId > 0 && $date !== '') {
-            $blockedTimes = DaoCitas::getBookedTimeSlots($medicoId, $date, $excludeId);
+            $blockedTimes = DaoCitas::getBookedTimeSlots(
+                $medicoId,
+                $date,
+                $excludeId,
+                $pacienteId
+            );
         }
 
         // Normalizar horarios bloqueados a formato HH:MM para comparación consistente

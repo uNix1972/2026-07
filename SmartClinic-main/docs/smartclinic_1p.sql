@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS cita (
     id INT AUTO_INCREMENT PRIMARY KEY,
     paciente_id INT NOT NULL,
     medico_id INT NOT NULL,
+    centro_salud_id INT NULL,
     estado_id INT NOT NULL,
     fecha_hora DATETIME NOT NULL,
     FOREIGN KEY (paciente_id) REFERENCES paciente (id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -571,6 +572,23 @@ CREATE TABLE IF NOT EXISTS receta_medica (
     FOREIGN KEY (historial_id) REFERENCES historial_medico(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
 
+CREATE TABLE IF NOT EXISTS signos_vitales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    cita_id INT NOT NULL UNIQUE,
+    temperatura DECIMAL(4,1) NULL,
+    presion_sistolica SMALLINT UNSIGNED NULL,
+    presion_diastolica SMALLINT UNSIGNED NULL,
+    frecuencia_cardiaca SMALLINT UNSIGNED NULL,
+    frecuencia_respiratoria SMALLINT UNSIGNED NULL,
+    saturacion_oxigeno DECIMAL(5,2) NULL,
+    peso DECIMAL(6,2) NULL,
+    talla DECIMAL(5,2) NULL,
+    notas VARCHAR(500) NULL,
+    fecha_registro DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (cita_id) REFERENCES cita(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
 CREATE TABLE IF NOT EXISTS pago_factura (
     id INT AUTO_INCREMENT PRIMARY KEY,
     cita_id INT NOT NULL UNIQUE,
@@ -614,8 +632,8 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 INSERT IGNORE INTO funciones (funcionId, funcionNombre, funcionDescripcion, funcionStatus) VALUES
     (18, 'ReportesController', 'Controlador de reportes operativos y exportación CSV', 'ACT'),
     (19, 'AuditController', 'Controlador de bitácora de auditoría', 'ACT'),
-    (20, 'DoctoresController', 'Portal de doctores, sala de espera e historial clínico', 'ACT'),
-    (21, 'PacientePortalController', 'Portal de autoservicio del paciente', 'ACT'),
+    (20, 'Controllers\\DoctoresController', 'Portal de doctores, sala de espera e historial clínico', 'ACT'),
+    (21, 'Controllers\\PacientePortalController', 'Portal de autoservicio del paciente', 'ACT'),
     (22, 'PagosController', 'Consulta de pagos y recibos simulados', 'ACT'),
     (23, 'NotificacionesController', 'Centro de notificaciones internas', 'ACT'),
     (24, 'BIController', 'Dashboard analítico de inteligencia de negocio', 'ACT'),
@@ -707,6 +725,7 @@ CREATE TABLE IF NOT EXISTS proveedor (
 CREATE TABLE IF NOT EXISTS ajuste_inventario (
     id INT AUTO_INCREMENT PRIMARY KEY,
     producto_id INT NOT NULL,
+    centro_salud_id INT NULL,
     tipo_ajuste ENUM('ENTRADA', 'SALIDA') NOT NULL,
     cantidad INT NOT NULL,
     motivo VARCHAR(255) NOT NULL,
@@ -785,9 +804,17 @@ CREATE TABLE IF NOT EXISTS medico_centro_salud (
     centro_salud_id INT NOT NULL,
     consultorio VARCHAR(30) NOT NULL,
     estado CHAR(3) NOT NULL DEFAULT 'ACT',
+    consultorio_activo VARCHAR(30)
+        AS (
+            CASE
+                WHEN estado = 'ACT' THEN TRIM(consultorio)
+                ELSE NULL
+            END
+        ) STORED,
     fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_medico_centro_salud (medico_id, centro_salud_id),
+    UNIQUE KEY uq_centro_consultorio_activo (centro_salud_id, consultorio_activo),
     FOREIGN KEY (medico_id) REFERENCES medico(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (centro_salud_id) REFERENCES centro_salud(id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
@@ -809,8 +836,132 @@ INSERT IGNORE INTO medico_centro_salud
 SELECT
     m.id,
     cs.id,
-    '01',
+    LPAD(m.id, 2, '0'),
     'ACT'
 FROM medico m
 JOIN centro_salud cs
     ON cs.codigo = 'SMARTCLINIC';
+
+-- cambios para aplicar centros de salud a los ajustes de inventario
+-- La columna centro_salud_id se crea directamente en ajuste_inventario.
+-- Equivale a una migración ADD COLUMN IF NOT EXISTS centro_salud_id.
+
+UPDATE ajuste_inventario ai
+JOIN centro_salud cs
+    ON cs.codigo = 'SMARTCLINIC'
+SET ai.centro_salud_id = cs.id
+WHERE ai.centro_salud_id IS NULL;
+
+ALTER TABLE ajuste_inventario
+    MODIFY COLUMN centro_salud_id INT NOT NULL;
+
+SET @fk_ajuste_inventario_centro_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'ajuste_inventario'
+      AND CONSTRAINT_NAME = 'fk_ajuste_inventario_centro_salud'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+);
+
+SET @fk_ajuste_inventario_centro_sql = IF(
+    @fk_ajuste_inventario_centro_exists = 0,
+    'ALTER TABLE ajuste_inventario ADD CONSTRAINT fk_ajuste_inventario_centro_salud FOREIGN KEY (centro_salud_id) REFERENCES centro_salud (id) ON DELETE RESTRICT ON UPDATE CASCADE',
+    'DO 1'
+);
+
+PREPARE fk_ajuste_inventario_centro_statement
+    FROM @fk_ajuste_inventario_centro_sql;
+EXECUTE fk_ajuste_inventario_centro_statement;
+DEALLOCATE PREPARE fk_ajuste_inventario_centro_statement;
+
+-- cambios para evitar consultorios duplicados en un centro de salud
+
+UPDATE medico_centro_salud mcs
+JOIN (
+    SELECT
+        active_assignments.id,
+        LPAD(
+            ROW_NUMBER() OVER (
+                PARTITION BY active_assignments.centro_salud_id
+                ORDER BY active_assignments.medico_id, active_assignments.id
+            ),
+            2,
+            '0'
+        ) AS nuevo_consultorio
+    FROM medico_centro_salud active_assignments
+    JOIN (
+        SELECT centro_salud_id
+        FROM medico_centro_salud
+        WHERE estado = 'ACT'
+        GROUP BY centro_salud_id
+        HAVING COUNT(*) > COUNT(DISTINCT TRIM(consultorio))
+    ) centros_duplicados
+        ON centros_duplicados.centro_salud_id =
+           active_assignments.centro_salud_id
+    WHERE active_assignments.estado = 'ACT'
+) habitaciones_unicas
+    ON habitaciones_unicas.id = mcs.id
+SET mcs.consultorio = habitaciones_unicas.nuevo_consultorio;
+
+-- consultorio_activo se crea directamente con medico_centro_salud.
+
+SET @uq_centro_consultorio_activo_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'medico_centro_salud'
+      AND INDEX_NAME = 'uq_centro_consultorio_activo'
+);
+
+SET @uq_centro_consultorio_activo_sql = IF(
+    @uq_centro_consultorio_activo_exists = 0,
+    'ALTER TABLE medico_centro_salud ADD UNIQUE KEY uq_centro_consultorio_activo (centro_salud_id, consultorio_activo)',
+    'DO 1'
+);
+
+PREPARE uq_centro_consultorio_activo_statement
+    FROM @uq_centro_consultorio_activo_sql;
+EXECUTE uq_centro_consultorio_activo_statement;
+DEALLOCATE PREPARE uq_centro_consultorio_activo_statement;
+
+-- cambios para aplicar centros de salud a las citas
+-- La columna se crea con cita; equivale a ADD COLUMN IF NOT EXISTS centro_salud_id.
+
+UPDATE cita c
+SET c.centro_salud_id = (
+    SELECT mcs.centro_salud_id
+    FROM medico_centro_salud mcs
+    JOIN centro_salud cs
+        ON cs.id = mcs.centro_salud_id
+    WHERE mcs.medico_id = c.medico_id
+      AND mcs.estado = 'ACT'
+      AND cs.estado = 'ACT'
+    ORDER BY
+        CASE WHEN cs.codigo = 'SMARTCLINIC' THEN 0 ELSE 1 END,
+        mcs.id ASC
+    LIMIT 1
+)
+WHERE c.centro_salud_id IS NULL;
+
+ALTER TABLE cita
+    MODIFY COLUMN centro_salud_id INT NOT NULL;
+
+SET @fk_cita_medico_centro_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'cita'
+      AND CONSTRAINT_NAME = 'fk_cita_medico_centro'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+);
+
+SET @fk_cita_medico_centro_sql = IF(
+    @fk_cita_medico_centro_exists = 0,
+    'ALTER TABLE cita ADD CONSTRAINT fk_cita_medico_centro FOREIGN KEY (medico_id, centro_salud_id) REFERENCES medico_centro_salud (medico_id, centro_salud_id) ON DELETE RESTRICT ON UPDATE CASCADE',
+    'DO 1'
+);
+
+PREPARE fk_cita_medico_centro_statement FROM @fk_cita_medico_centro_sql;
+EXECUTE fk_cita_medico_centro_statement;
+DEALLOCATE PREPARE fk_cita_medico_centro_statement;

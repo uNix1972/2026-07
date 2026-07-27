@@ -86,7 +86,8 @@ Important permission rule:
 - The seed creates the active `SmartClinic Center` record with code
   `SMARTCLINIC`.
 - Doctors present when the relationship block is executed receive
-  `SmartClinic Center`, consultorio `01`, through an idempotent `INSERT IGNORE`.
+  `SmartClinic Center` and a deterministic consultorio derived from their ID
+  through an idempotent `INSERT IGNORE`.
 - Inventory tables were added to an existing database as an incremental block:
   `producto`, `proveedor`, `ajuste_inventario`, `factura_compra`, and
   `factura_compra_detalle`.
@@ -137,11 +138,68 @@ Important permission rule:
 - Assignment rows are inactivated and reactivated instead of being deleted.
 - `Dao\MedicoCentroSalud` owns relationship queries and is fully commented.
 - `Dao\Medicos` coordinates transactional doctor writes and is fully commented.
-- This doctor integration does not change appointments, scheduling,
-  availability, or notifications.
-- Appointments should eventually store `centro_salud_id`.
-- Multi-center inventory is a separate future phase because the current
-  `producto.stock_actual` is global.
+- The first doctor-center phase intentionally left appointments unchanged.
+  The later appointment-center phase below is now the active behavior.
+- `cita.centro_salud_id` is mandatory after the appointment-center migration.
+- `fk_cita_medico_centro` references the unique pair
+  `(medico_id, centro_salud_id)` in `medico_centro_salud`. Raw SQL therefore
+  cannot assign an appointment to a center where the doctor has never been
+  assigned.
+- Controllers additionally require the doctor-center relation and center to
+  be active when creating or editing an appointment.
+- Existing appointments are backfilled to the active `SmartClinic Center`
+  assignment during migration.
+- Doctor availability remains global across centers: the same doctor cannot
+  attend overlapping appointments in two locations. Different doctors may
+  attend at the same time in the same center only when they have different
+  consultorios.
+- Every active consultorio is unique inside its health center. The database
+  enforces this through generated column `consultorio_activo` and unique index
+  `uq_centro_consultorio_activo`; inactive assignments expose `NULL` and do not
+  reserve a room. Doctor creation and editing validate the same rule before
+  writing.
+- Existing SmartClinic Center assignments were migrated deterministically:
+  doctors 1 through 5 use consultorios `01` through `05`.
+- Patient conflicts remain global across doctors and centers.
+- Appointment overlap uses strict 30-minute boundaries. A slot at `08:00`
+  blocks an overlapping start but permits the consecutive `08:30` slot.
+- Staff create/edit forms and the patient portal load occupied times using
+  both doctor and patient. Final validation returns a specific doctor,
+  patient, or combined conflict message instead of the old generic warning.
+- Staff scheduling and patient self-service both require a center.
+- Appointment lists, doctor portal, patient portal, calendar day view, reports,
+  CSV export, audit metadata, and WhatsApp confirmations expose the selected
+  center and consultorio.
+- `MessageNotifier` receives the appointment location explicitly. It no longer
+  uses a hardcoded default consultorio for new appointment messages.
+- The appointment creation form displays the selected patient's phone directly
+  below the patient selector.
+- The staff appointment list is ordered by `fecha_hora` descending, with the
+  newest or furthest-future appointment first.
+- The appointment is submitted through a final confirmation dialog asking
+  `¿Está seguro que los datos son correctos?`. Immediate WhatsApp notification
+  is opt-in inside that dialog; its checkbox is no longer displayed directly
+  on the appointment form. Saving without selecting it does not send a message.
+- Manual appointment notifications use
+  `CitasController&action=notify`, require POST, CSRF, and appointment-management
+  authorization, and are recorded in the audit log.
+- Manual notification is available only for future, non-final appointments
+  whose patient has a phone number. A malformed number or disabled WhatsApp
+  integration returns a visible failure result without changing the appointment.
+- Both immediate and manual sends rebuild the message from the saved
+  appointment, including its doctor, center, consultorio, date, and time.
+- Manual inventory adjustments require an active `centro_salud_id`. Existing
+  adjustments are backfilled to `SmartClinic Center`, and
+  `fk_ajuste_inventario_centro_salud` preserves the referenced center.
+- `Dao\AjusteInventario::registerWithStockChange()` locks the product row and
+  commits the global stock change plus its center-tagged adjustment in one
+  transaction. Failed or insufficient-stock adjustments roll back completely.
+- Recent inventory movements and the Kárdex display the adjustment center.
+  Purchases remain labeled `Inventario general` because purchases do not yet
+  select a center.
+- Fully center-specific stock remains a future phase: `producto.stock_actual`
+  is still the global balance, so this phase adds adjustment traceability
+  without changing purchase or product-total behavior.
 
 ## Existing Operational Notes
 
