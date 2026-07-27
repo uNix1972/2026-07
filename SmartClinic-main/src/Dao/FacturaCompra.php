@@ -30,27 +30,17 @@ class FacturaCompra extends Table
         return parent::obtenerRegistros($sql, ["factura_compra_id" => $facturaCompraId]);
     }
 
-    private static function generarNumeroFactura($conn): string
-    {
-        $sql = "SELECT COALESCE(MAX(id), 0) + 1 AS siguiente FROM factura_compra FOR UPDATE";
-        $result = parent::obtenerUnRegistro($sql, [], $conn);
-        $siguiente = (int) ($result['siguiente'] ?? 1);
-        return "FC-" . str_pad((string) $siguiente, 4, "0", STR_PAD_LEFT);
-    }
-
     /**
      * @param array $lineas cada elemento: ["producto_id" => int, "cantidad" => int, "precio_unitario" => float,
      *                                       "tipo_compra" => "UNI"|"CAJ", "cantidad_cajas" => int|null]
      *                       cantidad y precio_unitario ya deben venir convertidos a la unidad base del producto.
      */
-    public static function insertConDetalle(int $proveedorId, ?int $usuarioId, array $lineas): array
+    public static function insertConDetalle(int $proveedorId, string $numeroFactura, ?int $usuarioId, array $lineas): array
     {
         $conn = self::getConn();
         $conn->beginTransaction();
 
         try {
-            $numeroFactura = self::generarNumeroFactura($conn);
-
             $total = 0.0;
             foreach ($lineas as $linea) {
                 $total += $linea["cantidad"] * $linea["precio_unitario"];

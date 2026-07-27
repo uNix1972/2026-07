@@ -49,6 +49,7 @@
                         <th style="padding:15px;">Teléfono</th>
                         <th style="padding:15px;">Correo</th>
                         <th style="padding:15px;">Estado</th>
+                        <th style="padding:15px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -60,6 +61,30 @@
                         <td style="padding:14px; vertical-align:middle;">{{telefono}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{email}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{estado}}</td>
+                        <td style="padding:14px; vertical-align:middle;">
+                            <a href="index.php?page=ComprasController&action=proveedor_edit&id={{id}}"
+                               style="background:#0260CB; color:white; padding:8px 12px; border-radius:8px; text-decoration:none; margin-right:5px;">
+                                Editar
+                            </a>
+                            {{if activo}}
+                            <form method="POST" action="index.php?page=ComprasController&action=proveedor_toggle" style="display:inline;" data-confirm="¿Seguro que desea desactivar este proveedor?">
+                                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                <input type="hidden" name="id" value="{{id}}">
+                                <button type="submit" style="background:#D63031;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;">
+                                    Desactivar
+                                </button>
+                            </form>
+                            {{endif activo}}
+                            {{ifnot activo}}
+                            <form method="POST" action="index.php?page=ComprasController&action=proveedor_toggle" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                <input type="hidden" name="id" value="{{id}}">
+                                <button type="submit" style="background:#0F9D58;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;">
+                                    Activar
+                                </button>
+                            </form>
+                            {{endifnot activo}}
+                        </td>
                     </tr>
                     {{endfor proveedores}}
                 </tbody>

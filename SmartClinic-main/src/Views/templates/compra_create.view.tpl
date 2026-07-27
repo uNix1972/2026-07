@@ -25,6 +25,11 @@
           </small>
         </div>
 
+        <div class="form-group">
+          <label for="numero_factura">N° Factura</label>
+          <input type="text" id="numero_factura" name="numero_factura" maxlength="50" required placeholder="Ej: FC-0001">
+        </div>
+
       </div>
 
       <h3 style="margin:24px 0 12px 0; color:#111827;">Productos comprados</h3>

@@ -86,4 +86,23 @@ class Producto extends Table
         $sql = "UPDATE producto SET estado = 'INA' WHERE id = :id";
         return parent::executeNonQuery($sql, ["id" => $id]);
     }
+
+    /**
+     * Publica una notificación global cuando un movimiento hace que el
+     * stock cruce de normal a bajo (no se repite si ya estaba bajo).
+     */
+    public static function notificarSiStockBajo(
+        string $nombre,
+        int $stockAntes,
+        int $stockDespues,
+        int $stockMinimo
+    ): void {
+        if ($stockAntes >= $stockMinimo && $stockDespues < $stockMinimo) {
+            ClinicaAvanzada::crearNotificacion(
+                "Stock bajo",
+                "El producto \"{$nombre}\" bajó del stock mínimo "
+                    . "({$stockDespues}/{$stockMinimo})."
+            );
+        }
+    }
 }

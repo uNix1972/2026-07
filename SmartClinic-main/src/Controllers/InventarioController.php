@@ -216,9 +216,19 @@ class InventarioController extends PrivateController
             }
 
             $delta = $tipoAjuste === "SALIDA" ? -$cantidad : $cantidad;
+            $stockAntes = (int) $producto["stock_actual"];
+            $stockDespues = $stockAntes + $delta;
+
             DaoProducto::ajustarStock($productoId, $delta);
             DaoAjusteInventario::insert($productoId, $tipoAjuste, $cantidad, $motivo, Security::getUserId());
             AuditLogger::log('ajustar', 'Inventario', "Ajuste de stock ($tipoAjuste) sobre " . $producto["nombre"] . ": $cantidad", ['producto_id' => $productoId]);
+
+            DaoProducto::notificarSiStockBajo(
+                $producto["nombre"],
+                $stockAntes,
+                $stockDespues,
+                (int) $producto["stock_minimo"]
+            );
 
             Site::redirectTo("index.php?page=InventarioController&action=index");
             exit;

@@ -37,6 +37,14 @@ class ComprasController extends PrivateController
                 $this->proveedores();
                 break;
 
+            case "proveedor_edit":
+                $this->proveedorEdit();
+                break;
+
+            case "proveedor_toggle":
+                $this->proveedorToggle();
+                break;
+
             default:
                 $this->index();
                 break;
@@ -180,6 +188,7 @@ class ComprasController extends PrivateController
             }
 
             $proveedorId = Validators::sanitizeId($_POST["proveedor_id"] ?? 0);
+            $numeroFactura = Validators::sanitizeString($_POST["numero_factura"] ?? "", 50);
             $productoIds = $_POST["producto_id"] ?? [];
             $cantidades = $_POST["cantidad"] ?? [];
             $precios = $_POST["precio_unitario"] ?? [];
@@ -190,6 +199,8 @@ class ComprasController extends PrivateController
 
             if ($proveedorId === null) {
                 $error = "Seleccione un proveedor.";
+            } elseif ($numeroFactura === "") {
+                $error = "Ingrese el número de factura.";
             } elseif (!is_array($productoIds) || count($productoIds) === 0) {
                 $error = "Agregue al menos un producto a la compra.";
             } else {
@@ -209,7 +220,20 @@ class ComprasController extends PrivateController
                 return;
             }
 
-            $resultado = DaoFacturaCompra::insertConDetalle($proveedorId, Security::getUserId(), $lineas);
+            try {
+                $resultado = DaoFacturaCompra::insertConDetalle($proveedorId, $numeroFactura, Security::getUserId(), $lineas);
+            } catch (\PDOException $e) {
+                if ((int) $e->getCode() === 23000) {
+                    Renderer::render("compra_create", [
+                        "proveedores" => DaoProveedor::getActivos(),
+                        "productos" => DaoProducto::getActivos(),
+                        "error" => "Ya existe una factura con ese número para este proveedor."
+                    ]);
+                    return;
+                }
+                throw $e;
+            }
+
             AuditLogger::log('crear', 'Compras', 'Factura de compra registrada: ' . $resultado['numero_factura'], ['factura_compra_id' => $resultado['id']]);
 
             Site::redirectTo("index.php?page=ComprasController&action=view&id=" . $resultado['id']);
@@ -294,6 +318,7 @@ class ComprasController extends PrivateController
         $numeroFila = 1;
         foreach ($proveedores as &$proveedor) {
             $proveedor["numero_fila"] = $numeroFila;
+            $proveedor["activo"] = ($proveedor["estado"] ?? "") === "ACT";
             $numeroFila++;
         }
         unset($proveedor);
@@ -328,5 +353,79 @@ class ComprasController extends PrivateController
         }
 
         Renderer::render("proveedores", ["proveedores" => $this->getProveedoresConNumeroFila()]);
+    }
+
+    private function proveedorEdit(): void
+    {
+        $id = Validators::sanitizeId($_GET["id"] ?? 0);
+        $proveedor = $id !== null ? DaoProveedor::getById($id) : null;
+
+        if (!$proveedor) {
+            Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+            exit;
+        }
+
+        if ($_SERVER["REQUEST_METHOD"] === "POST") {
+            if (!Security::validateCsrfPost()) {
+                Renderer::render("proveedor_edit", [
+                    "proveedor" => $proveedor,
+                    "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
+                ]);
+                return;
+            }
+
+            $nombre = Validators::sanitizeString($_POST["nombre"] ?? "");
+            $contacto = Validators::sanitizeString($_POST["contacto"] ?? "");
+            $telefono = Validators::sanitizeString($_POST["telefono"] ?? "");
+            $email = Validators::sanitizeString($_POST["email"] ?? "");
+            $direccion = Validators::sanitizeString($_POST["direccion"] ?? "");
+
+            if ($nombre === "") {
+                $proveedor = array_merge($proveedor, [
+                    "nombre" => $nombre,
+                    "contacto" => $contacto,
+                    "telefono" => $telefono,
+                    "email" => $email,
+                    "direccion" => $direccion
+                ]);
+                Renderer::render("proveedor_edit", [
+                    "proveedor" => $proveedor,
+                    "error" => "El nombre del proveedor es obligatorio."
+                ]);
+                return;
+            }
+
+            DaoProveedor::update($id, $nombre, $contacto, $telefono, $email, $direccion);
+            AuditLogger::log('editar', 'Compras', 'Proveedor actualizado: ' . $nombre, ['proveedor_id' => $id]);
+
+            Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+            exit;
+        }
+
+        Renderer::render("proveedor_edit", ["proveedor" => $proveedor]);
+    }
+
+    private function proveedorToggle(): void
+    {
+        if ($_SERVER["REQUEST_METHOD"] !== "POST" || !Security::validateCsrfPost()) {
+            Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+            exit;
+        }
+
+        $id = Validators::sanitizeId($_POST["id"] ?? 0);
+        $proveedor = $id !== null ? DaoProveedor::getById($id) : null;
+
+        if ($proveedor) {
+            if (($proveedor["estado"] ?? "") === "ACT") {
+                DaoProveedor::disable($id);
+                AuditLogger::log('eliminar', 'Compras', 'Proveedor desactivado: ' . $proveedor['nombre'], ['proveedor_id' => $id]);
+            } else {
+                DaoProveedor::enable($id);
+                AuditLogger::log('activar', 'Compras', 'Proveedor reactivado: ' . $proveedor['nombre'], ['proveedor_id' => $id]);
+            }
+        }
+
+        Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+        exit;
     }
 }
