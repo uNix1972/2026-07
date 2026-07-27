@@ -542,6 +542,97 @@ p  { color: var(--sc-gray-500); line-height: 1.75; }
     }
 }
 
+/*Paneles internos (Reportes, Portales, BI, Auditoría, Notificaciones, Pagos)*/
+.sc-panel-card {
+    background: var(--sc-white);
+    border: 1px solid var(--sc-blue-50);
+    border-radius: var(--sc-radius-lg);
+    box-shadow: var(--sc-shadow-sm);
+    padding: 24px;
+}
+.sc-panel-card h3,
+.sc-panel-card h4 {
+    margin-bottom: 14px;
+}
+
+.sc-two-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+@media (max-width: 760px) {
+    .sc-two-columns { grid-template-columns: 1fr; }
+}
+
+.sc-info-card {
+    background: var(--sc-blue-50);
+    border-radius: var(--sc-radius-lg);
+    padding: 20px 24px;
+    box-shadow: var(--sc-shadow-sm);
+}
+
+.sc-report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+}
+.sc-report-card {
+    background: var(--sc-white);
+    border: 1px solid var(--sc-gray-100);
+    border-radius: var(--sc-radius-md);
+    box-shadow: var(--sc-shadow-sm);
+    padding: 20px;
+}
+
+.sc-alert {
+    padding: 14px 18px;
+    border-radius: var(--sc-radius-md);
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 18px;
+    border: 1px solid transparent;
+}
+.sc-alert--success {
+    background: #E1F5EE;
+    color: var(--sc-success);
+    border-color: rgba(29, 158, 117, .25);
+}
+.sc-alert--danger {
+    background: #FDECEA;
+    color: var(--sc-danger);
+    border-color: rgba(214, 48, 49, .25);
+}
+.sc-alert--warning {
+    background: #FAEEDA;
+    color: var(--sc-warning);
+    border-color: rgba(186, 117, 23, .25);
+}
+
+/*Botón de peligro (usado en acciones destructivas)*/
+.btn--danger {
+    background: var(--sc-danger);
+    color: var(--sc-white);
+    border: 2px solid var(--sc-danger);
+}
+.btn--danger:hover {
+    background: #B92C2D;
+    border-color: #B92C2D;
+    transform: translateY(-1px);
+    box-shadow: var(--sc-shadow-md);
+}
+
+/*Iconos de ordenamiento en tablas (sin depender de un kit externo de Font Awesome)*/
+.fas.fa-sort,
+.fas.fa-sort-up,
+.fas.fa-sort-down {
+    font-style: normal;
+    display: inline-block;
+    color: var(--sc-gray-300);
+}
+.fas.fa-sort::before { content: '\2195'; }
+.fas.fa-sort-up::before { content: '\2191'; color: var(--sc-blue-900); }
+.fas.fa-sort-down::before { content: '\2193'; color: var(--sc-blue-900); }
+
 /*Responsive*/
 @media (max-width: 900px) {
     .footer-grid { grid-template-columns: 1fr 1fr; }

@@ -4,7 +4,8 @@
   background: linear-gradient(140deg, var(--sc-blue-900) 0%, var(--sc-blue-700) 55%, var(--sc-blue-500) 100%);
 }
 
-.auth-page {
+.auth-page,
+.auth-shell {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -15,7 +16,8 @@
   overflow: hidden;
 }
 
-.auth-page::before {
+.auth-page::before,
+.auth-shell::before {
   content: '';
   position: absolute;
   inset: 0;
