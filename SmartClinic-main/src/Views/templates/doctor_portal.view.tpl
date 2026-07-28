@@ -126,7 +126,7 @@
           {{endfor agenda}}
         </select>
       </div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px;">
+      <div class="clinical-fields-grid">
         <div class="toolbar-field"><label for="temperatura">Temperatura °C</label><input id="temperatura" type="number" step="0.1" min="30" max="45" name="temperatura"></div>
         <div class="toolbar-field"><label for="presion_sistolica">Presión sistólica</label><input id="presion_sistolica" type="number" min="50" max="260" name="presion_sistolica"></div>
         <div class="toolbar-field"><label for="presion_diastolica">Presión diastólica</label><input id="presion_diastolica" type="number" min="30" max="180" name="presion_diastolica"></div>

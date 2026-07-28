@@ -18,7 +18,7 @@ class Dao {
     {
         if (self::$_conn == null) {
             $_dds = sprintf(
-                "%s:host=%s;dbname=%s;port=%s;charset=utf8",
+                "%s:host=%s;dbname=%s;port=%s;charset=utf8mb4",
                 \Utilities\Context::getContextByKey("DB_PROVIDER"),
                 \Utilities\Context::getContextByKey("DB_SERVER"),
                 \Utilities\Context::getContextByKey("DB_DATABASE"),

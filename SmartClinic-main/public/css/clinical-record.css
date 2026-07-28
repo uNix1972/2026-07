@@ -200,9 +200,21 @@
   font-weight: 700;
 }
 
+.clinical-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.clinical-fields-grid > .toolbar-field {
+  min-width: 0;
+  padding: 14px;
+}
+
 .clinical-page input,
 .clinical-page select,
 .clinical-page textarea {
+  min-width: 0;
   width: 100%;
   border: 1px solid #cbd9ea;
   border-radius: 11px;
@@ -303,6 +315,10 @@
   }
 
   .clinical-note-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .clinical-fields-grid {
     grid-template-columns: 1fr;
   }
 }

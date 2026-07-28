@@ -1,5 +1,6 @@
 -- Migración idempotente para instalaciones existentes de SmartClinic.
 USE smartclinic_db;
+SET NAMES utf8mb4;
 
 INSERT INTO funciones (funcionNombre, funcionDescripcion, funcionStatus)
 SELECT
