@@ -1,11 +1,20 @@
 FROM php:8.2-apache
 
-# Apache solo puede tener UN modulo MPM activo a la vez. La imagen base a
-# veces trae mas de uno habilitado (por ejemplo mpm_event junto con
-# mpm_prefork), lo cual Apache rechaza con el error "More than one MPM
-# loaded" y el contenedor no arranca. PHP en modo Apache (mod_php) necesita
-# mpm_prefork especificamente, asi que forzamos que sea el unico activo.
-RUN a2dismod mpm_event mpm_worker 2>/dev/null; a2enmod mpm_prefork
+# Apache solo puede tener UN modulo MPM activo a la vez. Se vio en Railway el
+# error "AH00534: More than one MPM loaded" al arrancar el contenedor, pero
+# la imagen base ya tenia solo mpm_prefork habilitado (a2enmod lo confirmo
+# con "already enabled"), asi que forzamos el estado a mano borrando
+# cualquier symlink de mpm_event/mpm_worker que pueda existir y dejando
+# unicamente los de mpm_prefork. El "RUN apache2ctl -M" de abajo hace que el
+# build FALLE inmediatamente (en vez de fallar horas despues en Railway) si
+# sigue quedando mas de un MPM cargado, y de paso imprime en el log de build
+# la lista real de modulos activos para poder diagnosticarlo.
+RUN rm -f /etc/apache2/mods-enabled/mpm_event.load /etc/apache2/mods-enabled/mpm_event.conf \
+           /etc/apache2/mods-enabled/mpm_worker.load /etc/apache2/mods-enabled/mpm_worker.conf \
+    && ln -sf ../mods-available/mpm_prefork.load /etc/apache2/mods-enabled/mpm_prefork.load \
+    && ln -sf ../mods-available/mpm_prefork.conf /etc/apache2/mods-enabled/mpm_prefork.conf \
+    && ls -la /etc/apache2/mods-enabled/ | grep -i mpm \
+    && apache2ctl -M
 
 RUN docker-php-ext-install pdo pdo_mysql mysqli \
     && docker-php-ext-enable opcache
