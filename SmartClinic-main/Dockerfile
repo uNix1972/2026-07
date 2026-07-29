@@ -74,4 +74,14 @@ EXPOSE 80
 # mpm_event/mpm_worker y se deja solo mpm_prefork justo antes de arrancar
 # Apache, en el propio arranque del contenedor, para que no dependa de nada
 # que haya quedado cacheado del build.
-CMD ["sh", "-c", "rm -f /etc/apache2/mods-enabled/mpm_event.load /etc/apache2/mods-enabled/mpm_event.conf /etc/apache2/mods-enabled/mpm_worker.load /etc/apache2/mods-enabled/mpm_worker.conf; ln -sf ../mods-available/mpm_prefork.load /etc/apache2/mods-enabled/mpm_prefork.load; ln -sf ../mods-available/mpm_prefork.conf /etc/apache2/mods-enabled/mpm_prefork.conf; echo '=== mods-enabled (mpm) ==='; ls -la /etc/apache2/mods-enabled/ | grep -i mpm; echo '=== apache2ctl -M ==='; apache2ctl -M 2>&1; echo '=== fin diagnostico ==='; exec apache2-foreground"]
+#
+# parameters.env queda en el repo con la configuracion de Docker LOCAL
+# (DB_SERVER=db) para que el equipo pueda seguir corriendo el proyecto en su
+# propia PC sin tocar nada. Si el contenedor arranca en Railway, ahi SI
+# existen las variables DB_SERVER/DB_DATABASE/DB_PORT/DB_USER/DB_PSWD como
+# variables de entorno reales (configuradas a mano en Railway, nunca en
+# git), y este script las usa para pisar esas mismas lineas de
+# parameters.env justo antes de arrancar Apache. Localmente esas variables
+# no existen, asi que este bloque no hace nada y parameters.env se queda tal
+# cual esta en el repo.
+CMD ["sh", "-c", "rm -f /etc/apache2/mods-enabled/mpm_event.load /etc/apache2/mods-enabled/mpm_event.conf /etc/apache2/mods-enabled/mpm_worker.load /etc/apache2/mods-enabled/mpm_worker.conf; ln -sf ../mods-available/mpm_prefork.load /etc/apache2/mods-enabled/mpm_prefork.load; ln -sf ../mods-available/mpm_prefork.conf /etc/apache2/mods-enabled/mpm_prefork.conf; if [ -n \"$DB_SERVER\" ]; then echo 'Railway detectado: sobrescribiendo parameters.env con variables de entorno'; sed -i \"s|^DB_SERVER=.*|DB_SERVER=$DB_SERVER|\" /var/www/html/parameters.env; sed -i \"s|^DB_DATABASE=.*|DB_DATABASE=$DB_DATABASE|\" /var/www/html/parameters.env; sed -i \"s|^DB_PORT=.*|DB_PORT=$DB_PORT|\" /var/www/html/parameters.env; sed -i \"s|^DB_USER=.*|DB_USER=$DB_USER|\" /var/www/html/parameters.env; sed -i \"s|^DB_PSWD=.*|DB_PSWD=$DB_PSWD|\" /var/www/html/parameters.env; fi; exec apache2-foreground"]
