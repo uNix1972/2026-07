@@ -66,9 +66,12 @@ RUN mkdir -p /var/www/html/data \
 
 EXPOSE 80
 
-# Diagnostico temporal: el build queda bien (solo mpm_prefork), pero en
-# Railway el contenedor truena al arrancar con "More than one MPM loaded".
-# Esto imprime el estado real de /etc/apache2/mods-enabled y el resultado de
-# apache2ctl -M justo antes de arrancar Apache, para ver que es distinto en
-# el momento del arranque real (Deploy Logs) contra lo que vimos en el build.
-CMD ["sh", "-c", "echo '=== mods-enabled (mpm) ==='; ls -la /etc/apache2/mods-enabled/ | grep -i mpm; echo '=== apache2ctl -M ==='; apache2ctl -M 2>&1; echo '=== fin diagnostico ==='; exec apache2-foreground"]
+# El log de arranque en Railway mostro que mpm_event.load/.conf seguian
+# presentes en tiempo de ejecucion (con fecha de la imagen base) junto con
+# mpm_prefork (con fecha del build), o sea que el "RUN rm -f" de arriba no
+# quedo aplicado en el contenedor real (probablemente por cache de capas).
+# En vez de pelear con la cache del build, se arregla en caliente: se borra
+# mpm_event/mpm_worker y se deja solo mpm_prefork justo antes de arrancar
+# Apache, en el propio arranque del contenedor, para que no dependa de nada
+# que haya quedado cacheado del build.
+CMD ["sh", "-c", "rm -f /etc/apache2/mods-enabled/mpm_event.load /etc/apache2/mods-enabled/mpm_event.conf /etc/apache2/mods-enabled/mpm_worker.load /etc/apache2/mods-enabled/mpm_worker.conf; ln -sf ../mods-available/mpm_prefork.load /etc/apache2/mods-enabled/mpm_prefork.load; ln -sf ../mods-available/mpm_prefork.conf /etc/apache2/mods-enabled/mpm_prefork.conf; echo '=== mods-enabled (mpm) ==='; ls -la /etc/apache2/mods-enabled/ | grep -i mpm; echo '=== apache2ctl -M ==='; apache2ctl -M 2>&1; echo '=== fin diagnostico ==='; exec apache2-foreground"]
