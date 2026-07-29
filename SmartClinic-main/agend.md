@@ -60,7 +60,9 @@ Important permission rule:
 ## Database Practices
 
 - The active database is `smartclinic_db`.
-- The development container reaches MariaDB at `127.0.0.1`.
+- The PHP development container reaches MariaDB through the Docker service
+  hostname `db`. Host-side database tools reach the published port at
+  `127.0.0.1`.
 - Docker initialization scripts only run when the database volume is created.
   Updating `docs/smartclinic_1p.sql` does not update an existing database.
 - Do not re-import the complete SQL file into an existing database. It contains
@@ -225,6 +227,16 @@ Important permission rule:
 - The appointment-status and doctor-workload panels combine proportional
   SVG pie charts with exact-value bars. Pie metadata is calculated server-side
   by `BIController`, so the dashboard does not require a chart dependency.
+- Public contact submissions are stored in `contacto_mensaje`, never in the
+  legacy `data/contact_messages.json` file. New rows start as `PEN`; the
+  administrative inbox can move them through `LEI` and `RES`.
+- `Dao\ContactoMensaje` owns contact insertion, filtered inbox queries,
+  summary counts, and status transitions. Status changes record the managing
+  user and are also written to the audit log.
+- `Controllers\ContactoMensajesController` and `Menu_ContactoMensajes` are
+  assigned to the administrator role. The public `Contacto` controller does
+  not require a private permission but must validate CSRF and confirm the
+  database insert before returning success.
 - `inventario_centro` stores the authoritative stock for each
   `(producto_id, centro_salud_id)` pair. A missing pair represents zero stock
   until the first movement creates it.
@@ -268,8 +280,12 @@ Important permission rule:
   subfolder above and at `/` in the project's standalone Docker setup.
 - The project is PHP MVC with vanilla JavaScript; it does not use React.
 - Xdebug connection warnings do not prevent PHP execution.
-- `parameters.env` contains local environment configuration and must not be
-  overwritten casually.
+- `parameters.env` contains deployment defaults. Actual hosting-environment
+  variables take precedence over those committed values.
+- `parameters.local.env` is an ignored, machine-specific override. The shared
+  development container uses it to select `DB_SERVER=db` and the local
+  database credentials, so pulling deployment configuration does not break
+  local pages.
 - API tokens and passwords must not be copied into this agenda.
 
 ## Rollback Convention

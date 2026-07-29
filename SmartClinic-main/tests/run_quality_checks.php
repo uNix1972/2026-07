@@ -88,6 +88,50 @@ check(is_file(__DIR__ . '/../src/Controllers/NotificacionesController.php'), 'no
 check(is_file(__DIR__ . '/../src/Controllers/PasswordRecoveryController.php'), 'recuperación de contraseña presente');
 check(is_file(__DIR__ . '/../src/Controllers/BIController.php'), 'módulo BI presente');
 check(is_file(__DIR__ . '/../src/Dao/ClinicaAvanzada.php'), 'DAO clínico avanzado presente');
+check(
+    is_file(__DIR__ . '/../src/Controllers/ContactoMensajesController.php'),
+    'buzon administrativo de contacto presente'
+);
+check(
+    is_file(__DIR__ . '/../src/Dao/ContactoMensaje.php'),
+    'DAO comentado de mensajes de contacto presente'
+);
+$contactController = file_get_contents(
+    __DIR__ . '/../src/Controllers/Contacto.php'
+);
+$contactAdminController = file_get_contents(
+    __DIR__ . '/../src/Controllers/ContactoMensajesController.php'
+);
+$contactDao = file_get_contents(
+    __DIR__ . '/../src/Dao/ContactoMensaje.php'
+);
+$contactView = file_get_contents(
+    __DIR__ . '/../src/Views/templates/contacto_mensajes.view.tpl'
+);
+check(
+    strpos($contactController, 'ContactoMensaje::insert') !== false
+        && strpos($contactController, 'file_put_contents') === false,
+    'contacto publico persiste en MariaDB y no en JSON'
+);
+check(
+    strpos($contactDao, 'INSERT INTO contacto_mensaje') !== false
+        && strpos($contactDao, 'getCounts()') !== false
+        && strpos($contactDao, 'setStatus(') !== false,
+    'DAO de contacto cubre alta, resumen y seguimiento'
+);
+check(
+    strpos($contactAdminController, 'Security::validateCsrfPost') !== false
+        && strpos($contactAdminController, 'AuditLogger::log') !== false
+        && strpos(
+            $contactAdminController,
+            '$mensaje["csrf_token"] = $csrfToken'
+        ) !== false
+        && strpos($contactView, 'contact-inbox__table') !== false
+        && strpos($contactView, 'contact-inbox__cell-stack') !== false
+        && strpos($contactView, 'IP:') === false,
+    'buzon de contacto protege y audita los cambios de estado'
+);
+
 $biController = file_get_contents(
     __DIR__ . '/../src/Controllers/BIController.php'
 );
@@ -487,6 +531,27 @@ check(strpos($navConfig, 'PagosController') !== false, 'menú pagos registrado')
 check(strpos($navConfig, 'NotificacionesController') !== false, 'menú notificaciones registrado');
 check(strpos($navConfig, 'BIController') !== false, 'menú BI registrado');
 check(strpos($navConfig, 'Menu_CentrosSalud') !== false, 'menú centros de salud registrado');
+
+check(
+    strpos($navConfig, 'Menu_ContactoMensajes') !== false,
+    'menu de mensajes de contacto registrado'
+);
+check(
+    strpos(
+        $sql,
+        '-- cambios para agregar el flujo persistente de contacto'
+    ) !== false
+        && strpos(
+            $sql,
+            'CREATE TABLE IF NOT EXISTS contacto_mensaje'
+        ) !== false
+        && strpos(
+            $sql,
+            'Controllers\\\\ContactoMensajesController'
+        ) !== false
+        && strpos($sql, 'Menu_ContactoMensajes') !== false,
+    'tabla y permisos del flujo de contacto documentados'
+);
 
 $privateLayout = file_get_contents(__DIR__ . '/../src/Views/templates/privatelayout.view.tpl');
 check(strpos($privateLayout, 'skip-link') !== false, 'mejora de accesibilidad skip-link presente');

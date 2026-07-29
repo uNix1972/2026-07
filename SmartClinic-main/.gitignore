@@ -8,6 +8,7 @@ docs/manual_tecnico
 composer.lock
 phpdoc.dist.xml
 .env
+parameters.local.env
 logs
 rollback_backups/
 output/

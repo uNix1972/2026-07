@@ -19,7 +19,15 @@ class DotEnv
         $this->path = $path;
     }
 
-    public function load() :array
+    /**
+     * Loads the configured file and returns the effective values.
+     *
+     * By default, variables supplied by the hosting environment take
+     * precedence over values committed to the file. A machine-specific
+     * override file can explicitly replace those values when $overrideExisting
+     * is true.
+     */
+    public function load(bool $overrideExisting = false): array
     {
         $returnEnv = array();
         if (!is_readable($this->path)) {
@@ -37,12 +45,28 @@ class DotEnv
             $name = trim($name);
             $value = trim($value);
 
-            if (!array_key_exists($name, $_SERVER) && !array_key_exists($name, $_ENV)) {
-                putenv(sprintf('%s=%s', $name, $value));
-                $_ENV[$name] = $value;
-                $_SERVER[$name] = $value;
+            $existingValue = null;
+            if (array_key_exists($name, $_SERVER)) {
+                $existingValue = (string)$_SERVER[$name];
+            } elseif (array_key_exists($name, $_ENV)) {
+                $existingValue = (string)$_ENV[$name];
+            } else {
+                $processValue = getenv($name);
+                if ($processValue !== false) {
+                    $existingValue = (string)$processValue;
+                }
             }
-            $returnEnv[$name] = $value;
+
+            $effectiveValue = (!$overrideExisting && $existingValue !== null)
+                ? $existingValue
+                : $value;
+
+            if ($overrideExisting || $existingValue === null) {
+                putenv(sprintf('%s=%s', $name, $effectiveValue));
+                $_ENV[$name] = $effectiveValue;
+                $_SERVER[$name] = $effectiveValue;
+            }
+            $returnEnv[$name] = $effectiveValue;
         }
         return $returnEnv;
     }

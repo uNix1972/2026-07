@@ -1311,3 +1311,69 @@ INSERT IGNORE INTO inventario_centro
 SELECT producto.id, centro.id, 0
 FROM producto
 CROSS JOIN centro_salud centro;
+
+-- cambios para agregar el flujo persistente de contacto
+
+CREATE TABLE IF NOT EXISTS contacto_mensaje (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    email VARCHAR(160) NOT NULL,
+    asunto VARCHAR(120) NOT NULL,
+    mensaje TEXT NOT NULL,
+    ip_origen VARCHAR(45) NULL,
+    estado CHAR(3) NOT NULL DEFAULT 'PEN',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_lectura DATETIME NULL,
+    fecha_resolucion DATETIME NULL,
+    usuario_gestion_id INT NULL,
+    KEY idx_contacto_mensaje_estado_fecha (estado, fecha_creacion),
+    KEY idx_contacto_mensaje_email (email),
+    CONSTRAINT fk_contacto_mensaje_usuario_gestion
+        FOREIGN KEY (usuario_gestion_id)
+        REFERENCES usuario (usercod)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+INSERT IGNORE INTO funciones
+    (funcionId, funcionNombre, funcionDescripcion, funcionStatus)
+VALUES
+    (
+        38,
+        'Controllers\\ContactoMensajesController',
+        'Administrar mensajes recibidos desde el formulario de contacto',
+        'ACT'
+    ),
+    (
+        39,
+        'Menu_ContactoMensajes',
+        'Acceso al menu Mensajes de contacto',
+        'ACT'
+    );
+
+INSERT IGNORE INTO funciones_roles
+    (
+        funcionRolId,
+        funcionId,
+        rolId,
+        frStatus,
+        frFechaInicio,
+        frFechaFin
+    )
+VALUES
+    (
+        72,
+        38,
+        1,
+        'ACT',
+        CURRENT_TIMESTAMP,
+        '2099-12-31 23:59:59'
+    ),
+    (
+        73,
+        39,
+        1,
+        'ACT',
+        CURRENT_TIMESTAMP,
+        '2099-12-31 23:59:59'
+    );

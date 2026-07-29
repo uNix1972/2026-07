@@ -6,8 +6,19 @@ class Site
 {
     public static function configure()
     {
-        $donenv = new \Utilities\DotEnv("parameters.env");
-        \Utilities\Context::setArrayToContext($donenv->load());
+        $environment = (new \Utilities\DotEnv("parameters.env"))->load();
+
+        // Local development settings are intentionally untracked. They allow
+        // the shared Docker workspace to use its internal database hostname
+        // without replacing the deployment defaults after every pull.
+        if (is_file("parameters.local.env")) {
+            $environment = array_merge(
+                $environment,
+                (new \Utilities\DotEnv("parameters.local.env"))->load(true)
+            );
+        }
+
+        \Utilities\Context::setArrayToContext($environment);
         \Utilities\Context::setContext(
             "BASE_DIR",
             self::resolveBaseDir(

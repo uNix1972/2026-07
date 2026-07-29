@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const submitButton = form.querySelector('[type="submit"]');
     const required = ['nombre', 'email', 'asunto', 'mensaje'];
     const isValid = required.every((name) => {
       const field = form.elements.namedItem(name);
@@ -28,13 +29,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Enviando...';
+      }
       const response = await fetch(form.action, {
         method: 'POST',
         body: new FormData(form),
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
       });
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('La respuesta del servidor no es JSON.');
+      }
       const data = await response.json();
-      if (data.ok) {
+      if (response.ok && data.ok) {
         success.textContent = data.message || 'Mensaje recibido correctamente.';
         success.style.display = 'block';
         error.style.display = 'none';
@@ -48,6 +57,11 @@ document.addEventListener('DOMContentLoaded', () => {
       success.style.display = 'none';
       error.textContent = 'No fue posible enviar el mensaje. Intenta nuevamente.';
       error.style.display = 'block';
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Enviar mensaje';
+      }
     }
   });
 });
