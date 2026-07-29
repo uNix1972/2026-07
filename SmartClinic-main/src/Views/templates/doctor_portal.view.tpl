@@ -6,6 +6,7 @@
       <p>Agenda, signos vitales y expediente clínico por cada atención, todo en un mismo lugar.</p>
     </div>
     <div class="clinical-hero__actions">
+      <a href="index.php?page=DoctoresController&action=preclinica" class="btn btn--primary">Abrir Preclínica</a>
       <a href="index.php?page=HomeController" class="btn btn--outline">Volver al panel</a>
     </div>
   </header>
@@ -159,6 +160,7 @@
           <td style="padding:12px;">Temp. {{temperatura}} °C<br>PA {{presion_sistolica}}/{{presion_diastolica}}<br>FC {{frecuencia_cardiaca}} · FR {{frecuencia_respiratoria}}<br>SpO₂ {{saturacion_oxigeno}}%</td>
           <td style="padding:12px;">{{nombre_estado}}</td>
           <td style="padding:12px; display:flex; gap:8px; flex-wrap:wrap;">
+            <a class="btn btn--outline" href="index.php?page=DoctoresController&action=preclinica&cita_id={{id}}">Preclínica</a>
             <form method="POST" action="index.php?page=DoctoresController&action=confirmarLlegada"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--outline" type="submit">En espera</button></form>
             <form method="POST" action="index.php?page=DoctoresController&action=finalizar"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--primary" type="submit">Finalizar</button></form>
             <a class="btn btn--outline" href="index.php?page=DoctoresController&action=pdf&cita_id={{id}}">PDF</a>

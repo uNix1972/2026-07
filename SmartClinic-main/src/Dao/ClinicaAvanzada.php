@@ -173,7 +173,9 @@ class ClinicaAvanzada extends Table
      */
     public static function getCitasExpedientePaciente(
         int $pacienteId,
-        ?int $medicoId = null
+        ?int $medicoId = null,
+        ?string $fechaDesde = null,
+        ?string $fechaHasta = null
     ): array {
         $sql = "SELECT c.id, c.fecha_hora, c.medico_id, c.paciente_id,
                        c.centro_salud_id, ec.nombre_estado,
@@ -199,6 +201,14 @@ class ClinicaAvanzada extends Table
         if ($medicoId !== null) {
             $sql .= " AND c.medico_id = :medico_id";
             $params['medico_id'] = $medicoId;
+        }
+        if ($fechaDesde !== null) {
+            $sql .= " AND DATE(c.fecha_hora) >= :fecha_desde";
+            $params['fecha_desde'] = $fechaDesde;
+        }
+        if ($fechaHasta !== null) {
+            $sql .= " AND DATE(c.fecha_hora) <= :fecha_hasta";
+            $params['fecha_hasta'] = $fechaHasta;
         }
         $sql .= " ORDER BY c.fecha_hora DESC";
         return parent::obtenerRegistros($sql, $params);

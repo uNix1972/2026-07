@@ -10,6 +10,16 @@
     </div>
   </header>
 
+  <form method="GET" action="index.php" class="clinical-filter">
+    <input type="hidden" name="page" value="DoctoresController">
+    <input type="hidden" name="action" value="expediente">
+    <input type="hidden" name="paciente_id" value="{{paciente_id}}">
+    <div><label for="fecha_desde">Desde</label><input id="fecha_desde" type="date" name="fecha_desde" value="{{fecha_desde}}"></div>
+    <div><label for="fecha_hasta">Hasta</label><input id="fecha_hasta" type="date" name="fecha_hasta" value="{{fecha_hasta}}"></div>
+    <button class="btn btn--primary" type="submit">Filtrar expedientes</button>
+    <a class="btn btn--outline" href="index.php?page=DoctoresController&action=expediente&paciente_id={{paciente_id}}">Limpiar</a>
+  </form>
+
   {{if citas}}
   {{foreach citas}}
   <article class="sc-panel-card clinical-record-card" style="margin-bottom:18px;">
