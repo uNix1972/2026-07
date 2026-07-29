@@ -52,6 +52,13 @@
   <section class="sc-panel-card" style="margin-top:22px;">
     <h3>Mi expediente por cita</h3>
     <p class="clinical-section-intro">Consulte cada atención, sus signos vitales y descargue una copia PDF.</p>
+    <form method="GET" action="index.php" class="clinical-filter">
+      <input type="hidden" name="page" value="PacientePortalController">
+      <div><label for="fecha_desde">Desde</label><input id="fecha_desde" type="date" name="fecha_desde" value="{{fecha_desde}}"></div>
+      <div><label for="fecha_hasta">Hasta</label><input id="fecha_hasta" type="date" name="fecha_hasta" value="{{fecha_hasta}}"></div>
+      <button class="btn btn--primary" type="submit">Filtrar expedientes</button>
+      <a class="btn btn--outline" href="index.php?page=PacientePortalController">Limpiar</a>
+    </form>
     {{if expedientes}}
     <div class="table-responsive">
       <table style="width:100%; border-collapse:collapse;">

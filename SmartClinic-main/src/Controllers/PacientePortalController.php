@@ -11,6 +11,7 @@ use Utilities\ClinicalPdf;
 use Utilities\MessageNotifier;
 use Utilities\Security;
 use Utilities\Site;
+use Utilities\Validators;
 use Views\Renderer;
 
 class PacientePortalController extends PrivateController
@@ -48,6 +49,15 @@ class PacientePortalController extends PrivateController
         Site::addLink('public/css/clinical-record.css');
         $paciente = $this->getPaciente();
         $citas = DaoCitas::getCitasByPaciente(intval($paciente['id']));
+        $fechaDesde = Validators::sanitizeDate(
+            (string)($_GET['fecha_desde'] ?? '')
+        );
+        $fechaHasta = Validators::sanitizeDate(
+            (string)($_GET['fecha_hasta'] ?? '')
+        );
+        if ($fechaDesde && $fechaHasta && $fechaDesde > $fechaHasta) {
+            [$fechaDesde, $fechaHasta] = [$fechaHasta, $fechaDesde];
+        }
         Renderer::render('paciente_portal', [
             'paciente' => $paciente,
             'paciente_nombres' => $paciente['nombres'] ?? 'Paciente',
@@ -57,8 +67,13 @@ class PacientePortalController extends PrivateController
             'paciente_direccion' => $paciente['direccion'] ?? '',
             'citas' => $citas,
             'expedientes' => Clinica::getCitasExpedientePaciente(
-                intval($paciente['id'])
+                intval($paciente['id']),
+                null,
+                $fechaDesde,
+                $fechaHasta
             ),
+            'fecha_desde' => $fechaDesde ?? '',
+            'fecha_hasta' => $fechaHasta ?? '',
             'historial' => Clinica::getHistorialPaciente(intval($paciente['id'])),
             'recetas' => Clinica::getRecetasPaciente(intval($paciente['id'])),
             'medicos' => DaoMedicos::getAllMedicos(),

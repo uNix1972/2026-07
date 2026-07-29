@@ -7,6 +7,7 @@ use Utilities\AuditLogger;
 use Utilities\ClinicalPdf;
 use Utilities\Security;
 use Utilities\Site;
+use Utilities\Validators;
 use Views\Renderer;
 
 class DoctoresController extends PrivateController
@@ -26,6 +27,9 @@ class DoctoresController extends PrivateController
                 break;
             case 'guardarSignos':
                 $this->guardarSignos();
+                break;
+            case 'preclinica':
+                $this->preclinica();
                 break;
             case 'expediente':
                 $this->expediente();
@@ -137,6 +141,9 @@ class DoctoresController extends PrivateController
         $this->validateCsrf();
         $citaId = intval($_POST['cita_id'] ?? 0);
         $this->requireCitaPropia($citaId);
+        $returnTo = ($_POST['return_to'] ?? '') === 'preclinica'
+            ? 'preclinica'
+            : '';
 
         $ranges = [
             'temperatura' => [30, 45],
@@ -160,7 +167,9 @@ class DoctoresController extends PrivateController
                 )
             ) {
                 $this->redirectWithMessage(
-                    'Revise los rangos de los signos vitales.'
+                    'Revise los rangos de los signos vitales.',
+                    $returnTo,
+                    $citaId
                 );
             }
         }
@@ -177,7 +186,58 @@ class DoctoresController extends PrivateController
             'Signos vitales actualizados',
             ['cita_id' => $citaId]
         );
-        $this->redirectWithMessage('Signos vitales guardados correctamente.');
+        $this->redirectWithMessage(
+            'Signos vitales guardados correctamente.',
+            $returnTo,
+            $citaId
+        );
+    }
+
+    private function preclinica(): void
+    {
+        Site::addLink('public/css/clinical-record.css');
+        $medico = $this->getMedicoActual();
+        if (!$medico) {
+            http_response_code(403);
+            exit('La cuenta no está vinculada con un médico.');
+        }
+
+        $agenda = Clinica::getAgendaDoctor(intval($medico['id']));
+        $citaId = intval($_GET['cita_id'] ?? ($agenda[0]['id'] ?? 0));
+        $cita = $citaId > 0 ? $this->requireCitaPropia($citaId, false) : null;
+
+        foreach ($agenda as &$item) {
+            $item['selected'] = intval($item['id']) === $citaId
+                ? 'selected'
+                : '';
+            $item['signos_estado'] = $item['temperatura'] !== null
+                ? 'Registrados'
+                : 'Pendientes';
+        }
+        unset($item);
+
+        Renderer::render('preclinica', [
+            'medico_nombres' => $medico['nombres'] ?? '',
+            'medico_apellidos' => $medico['apellidos'] ?? '',
+            'agenda' => $agenda,
+            'hay_cita' => (bool)$cita,
+            'cita_id' => $cita['id'] ?? '',
+            'fecha_hora' => $cita['fecha_hora'] ?? '',
+            'paciente_nombres' => $cita['paciente_nombres'] ?? '',
+            'paciente_apellidos' => $cita['paciente_apellidos'] ?? '',
+            'nombre_estado' => $cita['nombre_estado'] ?? '',
+            'temperatura' => $cita['temperatura'] ?? '',
+            'presion_sistolica' => $cita['presion_sistolica'] ?? '',
+            'presion_diastolica' => $cita['presion_diastolica'] ?? '',
+            'frecuencia_cardiaca' => $cita['frecuencia_cardiaca'] ?? '',
+            'frecuencia_respiratoria' => $cita['frecuencia_respiratoria'] ?? '',
+            'saturacion_oxigeno' => $cita['saturacion_oxigeno'] ?? '',
+            'peso' => $cita['peso'] ?? '',
+            'talla' => $cita['talla'] ?? '',
+            'signos_notas' => $cita['signos_notas'] ?? '',
+            'csrf_token' => Security::getCsrfToken(),
+            'msg' => $_GET['msg'] ?? '',
+        ]);
     }
 
     private function expediente(): void
@@ -185,16 +245,22 @@ class DoctoresController extends PrivateController
         Site::addLink('public/css/clinical-record.css');
         $medico = $this->getMedicoActual();
         $pacienteId = intval($_GET['paciente_id'] ?? 0);
+        [$fechaDesde, $fechaHasta] = $this->getDateRange();
         $citas = $medico
             ? Clinica::getCitasExpedientePaciente(
                 $pacienteId,
-                intval($medico['id'])
+                intval($medico['id']),
+                $fechaDesde,
+                $fechaHasta
             )
             : [];
 
         Renderer::render('expediente_clinico', [
             'citas' => $citas,
             'volver' => 'index.php?page=DoctoresController',
+            'paciente_id' => $pacienteId,
+            'fecha_desde' => $fechaDesde ?? '',
+            'fecha_hasta' => $fechaHasta ?? '',
         ]);
     }
 
@@ -250,11 +316,30 @@ class DoctoresController extends PrivateController
         }
     }
 
-    private function redirectWithMessage(string $message): void
+    private function getDateRange(): array
     {
-        Site::redirectTo(
-            'index.php?page=DoctoresController&msg=' . urlencode($message)
-        );
+        $desde = Validators::sanitizeDate((string)($_GET['fecha_desde'] ?? ''));
+        $hasta = Validators::sanitizeDate((string)($_GET['fecha_hasta'] ?? ''));
+        if ($desde && $hasta && $desde > $hasta) {
+            [$desde, $hasta] = [$hasta, $desde];
+        }
+        return [$desde, $hasta];
+    }
+
+    private function redirectWithMessage(
+        string $message,
+        string $action = '',
+        int $citaId = 0
+    ): void
+    {
+        $url = 'index.php?page=DoctoresController';
+        if ($action !== '') {
+            $url .= '&action=' . rawurlencode($action);
+        }
+        if ($citaId > 0) {
+            $url .= '&cita_id=' . $citaId;
+        }
+        Site::redirectTo($url . '&msg=' . urlencode($message));
     }
 
 }
