@@ -65,3 +65,10 @@ RUN mkdir -p /var/www/html/data \
     && chmod -R 775 /var/www/html/data
 
 EXPOSE 80
+
+# Diagnostico temporal: el build queda bien (solo mpm_prefork), pero en
+# Railway el contenedor truena al arrancar con "More than one MPM loaded".
+# Esto imprime el estado real de /etc/apache2/mods-enabled y el resultado de
+# apache2ctl -M justo antes de arrancar Apache, para ver que es distinto en
+# el momento del arranque real (Deploy Logs) contra lo que vimos en el build.
+CMD ["sh", "-c", "echo '=== mods-enabled (mpm) ==='; ls -la /etc/apache2/mods-enabled/ | grep -i mpm; echo '=== apache2ctl -M ==='; apache2ctl -M 2>&1; echo '=== fin diagnostico ==='; exec apache2-foreground"]
