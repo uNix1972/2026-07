@@ -84,30 +84,24 @@
                     </td>
                     <td style="padding:14px; vertical-align:middle;">
                         {{if ~showCrudActions}}
-                        <a href="index.php?page=CitasController&action=edit&id={{id}}" style="background:#0260CB; color:white; padding:8px 12px; border-radius:8px; text-decoration:none; margin-right:5px;">
-                            Editar
-                        </a>
-                        {{if canNotify}}
-                        <form method="POST" action="index.php?page=CitasController&action=notify" style="display:inline;" data-confirm="¿Desea enviar ahora la notificación de esta cita al paciente?">
-                            <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
-                            <input type="hidden" name="id" value="{{id}}">
-                            <button type="submit" style="background:#047857;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;margin-right:5px;">
-                                Notificar
-                            </button>
-                        </form>
-                        {{endif canNotify}}
-                        {{if cannotNotify}}
-                        <button type="button" disabled title="Solo disponible para citas futuras activas con teléfono registrado" style="background:#E5E7EB;color:#64748B;padding:8px 12px;border-radius:8px;border:none;font:inherit;margin-right:5px;">
-                            Notificar
-                        </button>
-                        {{endif cannotNotify}}
-                        <form method="POST" action="index.php?page=CitasController&action=delete" style="display:inline;" data-confirm="¿Seguro que desea cancelar esta cita? Esta acción no se puede deshacer.">
-                            <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
-                            <input type="hidden" name="id" value="{{id}}">
-                            <button type="submit" style="background:#D63031;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;">
-                                Cancelar
-                            </button>
-                        </form>
+                        <div style="display:flex; justify-content:flex-end; flex-wrap:nowrap; gap:6px;">
+                            <a href="index.php?page=CitasController&action=edit&id={{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Editar</a>
+                            {{if canNotify}}
+                            <form method="POST" action="index.php?page=CitasController&action=notify" data-confirm="¿Desea enviar ahora la notificación de esta cita al paciente?">
+                                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                <input type="hidden" name="id" value="{{id}}">
+                                <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Notificar</button>
+                            </form>
+                            {{endif canNotify}}
+                            {{if cannotNotify}}
+                            <button type="button" disabled title="Solo disponible para citas futuras activas con teléfono registrado" class="btn btn--outline" style="padding:6px 12px; font-size:12px; opacity:.5; cursor:not-allowed;">Notificar</button>
+                            {{endif cannotNotify}}
+                            <form method="POST" action="index.php?page=CitasController&action=delete" data-confirm="¿Seguro que desea cancelar esta cita? Esta acción no se puede deshacer.">
+                                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                <input type="hidden" name="id" value="{{id}}">
+                                <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Cancelar</button>
+                            </form>
+                        </div>
                         {{endif ~showCrudActions}}
 
                         {{ifnot ~showCrudActions}}

@@ -96,9 +96,9 @@
         <td><span class="badge-tipo">{{fntyp}}</span></td>
         <td>
           <div class="acciones">
-            <a href="index.php?page=Security_Funcion&mode=DSP&id={{fncod}}" class="btn-ver">Ver</a>
-            <a href="index.php?page=Security_Funcion&mode=UPD&id={{fncod}}" class="btn-editar">Editar</a>
-            <a href="index.php?page=Security_Funcion&mode=DEL&id={{fncod}}" class="btn-eliminar">Eliminar</a>
+            <a href="index.php?page=Security_Funcion&mode=DSP&id={{fncod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Ver</a>
+            <a href="index.php?page=Security_Funcion&mode=UPD&id={{fncod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Editar</a>
+            <a href="index.php?page=Security_Funcion&mode=DEL&id={{fncod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Eliminar</a>
           </div>
         </td>
       </tr>

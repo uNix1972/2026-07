@@ -46,15 +46,17 @@
                         <td style="padding:13px;">{{telefono}}</td>
                         <td style="padding:13px;">{{estado_texto}}</td>
                         <td style="padding:13px;white-space:nowrap;">
-                            <a class="btn btn--outline" href="index.php?page=CentrosSaludController&action=edit&id={{id}}" style="padding:7px 10px;">Editar</a>
+                            <div style="display:flex; justify-content:flex-end; flex-wrap:nowrap; gap:6px;">
+                                <a class="btn btn--outline" href="index.php?page=CentrosSaludController&action=edit&id={{id}}" style="padding:6px 12px; font-size:12px;">Editar</a>
 
-                            {{if activo}}
-                            <button type="submit" form="center-status-{{id}}" class="btn btn--danger" style="padding:7px 10px;">Desactivar</button>
-                            {{endif activo}}
+                                {{if activo}}
+                                <button type="submit" form="center-status-{{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Desactivar</button>
+                                {{endif activo}}
 
-                            {{if inactivo}}
-                            <button type="submit" form="center-status-{{id}}" class="btn btn--primary" style="padding:7px 10px;">Activar</button>
-                            {{endif inactivo}}
+                                {{if inactivo}}
+                                <button type="submit" form="center-status-{{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Activar</button>
+                                {{endif inactivo}}
+                            </div>
                         </td>
                     </tr>
                     {{endfor centros}}

@@ -85,9 +85,9 @@
         <td><span class="badge-status" data-status="{{rolesest}}">{{rolesest}}</span></td>
         <td>
           <div class="acciones">
-            <a href="index.php?page=Security_Rol&mode=DSP&id={{rolescod}}" class="btn-ver">Ver</a>
-            <a href="index.php?page=Security_Rol&mode=UPD&id={{rolescod}}" class="btn-editar">Editar</a>
-            <a href="index.php?page=Security_Rol&mode=DEL&id={{rolescod}}" class="btn-eliminar">Eliminar</a>
+            <a href="index.php?page=Security_Rol&mode=DSP&id={{rolescod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Ver</a>
+            <a href="index.php?page=Security_Rol&mode=UPD&id={{rolescod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Editar</a>
+            <a href="index.php?page=Security_Rol&mode=DEL&id={{rolescod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Eliminar</a>
           </div>
         </td>
       </tr>

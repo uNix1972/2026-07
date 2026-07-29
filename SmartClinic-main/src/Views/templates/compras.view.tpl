@@ -54,14 +54,10 @@
                         <td style="padding:14px; vertical-align:middle;">{{fecha_compra}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{total}}</td>
                         <td style="padding:14px; vertical-align:middle;">
-                            <a href="index.php?page=ComprasController&action=view&id={{id}}"
-                               style="background:#0260CB; color:white; padding:8px 12px; border-radius:8px; text-decoration:none; margin-right:5px;">
-                                Ver
-                            </a>
-                            <a href="index.php?page=ComprasController&action=edit&id={{id}}"
-                               style="background:#033B9F; color:white; padding:8px 12px; border-radius:8px; text-decoration:none;">
-                                Editar
-                            </a>
+                            <div style="display:flex; justify-content:flex-end; flex-wrap:nowrap; gap:6px;">
+                                <a href="index.php?page=ComprasController&action=view&id={{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Ver</a>
+                                <a href="index.php?page=ComprasController&action=edit&id={{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Editar</a>
+                            </div>
                         </td>
                     </tr>
                     {{endfor facturas}}

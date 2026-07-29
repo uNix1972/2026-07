@@ -87,13 +87,13 @@
         <td><span class="badge-status" data-status="{{userest}}">{{userest}}</span></td>
         <td>
           <div class="acciones">
-            <a href="index.php?page=Security_User&mode=DSP&id={{usercod}}" class="btn-ver">Ver</a>
-            <a href="index.php?page=Security_User&mode=UPD&id={{usercod}}" class="btn-editar">Editar</a>
+            <a href="index.php?page=Security_User&mode=DSP&id={{usercod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Ver</a>
+            <a href="index.php?page=Security_User&mode=UPD&id={{usercod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Editar</a>
             {{if is_self}}
-            <span class="btn-eliminar-disabled">Eliminar</span>
+            <span class="btn btn--outline" style="padding:6px 12px; font-size:12px; opacity:.5; cursor:not-allowed;">Eliminar</span>
             {{endif is_self}}
             {{ifnot is_self}}
-            <a href="index.php?page=Security_User&mode=DEL&id={{usercod}}" class="btn-eliminar">Eliminar</a>
+            <a href="index.php?page=Security_User&mode=DEL&id={{usercod}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Eliminar</a>
             {{endifnot is_self}}
           </div>
         </td>

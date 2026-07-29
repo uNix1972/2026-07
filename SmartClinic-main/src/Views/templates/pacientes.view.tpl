@@ -65,25 +65,15 @@
                     <td style="padding:14px; vertical-align:middle;">
 
                         {{if ~showCrudActions}}
-                        <a href="index.php?page=PacientesController&action=edit&id={{id}}"
-                           style="
-                                background:#0260CB;
-                                color:white;
-                                padding:8px 12px;
-                                border-radius:8px;
-                                text-decoration:none;
-                                margin-right:5px;
-                           ">
-                            Editar
-                        </a>
+                        <div style="display:flex; justify-content:flex-end; flex-wrap:nowrap; gap:6px;">
+                            <a href="index.php?page=PacientesController&action=edit&id={{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Editar</a>
 
-                        <form method="POST" action="index.php?page=PacientesController&action=delete" style="display:inline;" data-confirm="¿Seguro que desea eliminar este paciente? Esta acción puede afectar su historial de citas.">
-                            <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
-                            <input type="hidden" name="id" value="{{id}}">
-                            <button type="submit" style="background:#D63031;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;">
-                                Eliminar
-                            </button>
-                        </form>
+                            <form method="POST" action="index.php?page=PacientesController&action=delete" data-confirm="¿Seguro que desea eliminar este paciente? Esta acción puede afectar su historial de citas.">
+                                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                <input type="hidden" name="id" value="{{id}}">
+                                <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Eliminar</button>
+                            </form>
+                        </div>
                         {{endif ~showCrudActions}}
 
                         {{ifnot ~showCrudActions}}
