@@ -1,5 +1,12 @@
 FROM php:8.2-apache
 
+# Apache solo puede tener UN modulo MPM activo a la vez. La imagen base a
+# veces trae mas de uno habilitado (por ejemplo mpm_event junto con
+# mpm_prefork), lo cual Apache rechaza con el error "More than one MPM
+# loaded" y el contenedor no arranca. PHP en modo Apache (mod_php) necesita
+# mpm_prefork especificamente, asi que forzamos que sea el unico activo.
+RUN a2dismod mpm_event mpm_worker 2>/dev/null; a2enmod mpm_prefork
+
 RUN docker-php-ext-install pdo pdo_mysql mysqli \
     && docker-php-ext-enable opcache
 
