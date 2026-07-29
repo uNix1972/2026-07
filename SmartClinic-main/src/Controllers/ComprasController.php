@@ -37,6 +37,22 @@ class ComprasController extends PrivateController
                 $this->proveedores();
                 break;
 
+            case "proveedor_edit":
+                $this->proveedorEdit();
+                break;
+
+            case "proveedor_desactivar":
+                $this->proveedorDesactivar();
+                break;
+
+            case "proveedor_activar":
+                $this->proveedorActivar();
+                break;
+
+            case "proveedor_eliminar":
+                $this->proveedorEliminar();
+                break;
+
             default:
                 $this->index();
                 break;
@@ -294,6 +310,7 @@ class ComprasController extends PrivateController
         $numeroFila = 1;
         foreach ($proveedores as &$proveedor) {
             $proveedor["numero_fila"] = $numeroFila;
+            $proveedor["esActivo"] = ($proveedor["estado"] ?? "") === "ACT";
             $numeroFila++;
         }
         unset($proveedor);
@@ -303,6 +320,11 @@ class ComprasController extends PrivateController
 
     private function proveedores(): void
     {
+        // Aviso de "no se pudo eliminar" que llega por GET después de un
+        // redirect desde proveedorEliminar() (cuando la base de datos
+        // rechaza el borrado por tener facturas de compra registradas).
+        $errorEliminarProveedor = trim((string) ($_GET["errorEliminar"] ?? ""));
+
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if (!Security::validateCsrfPost()) {
                 Renderer::render("proveedores", ["proveedores" => $this->getProveedoresConNumeroFila(), "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."]);
@@ -327,6 +349,129 @@ class ComprasController extends PrivateController
             exit;
         }
 
-        Renderer::render("proveedores", ["proveedores" => $this->getProveedoresConNumeroFila()]);
+        Renderer::render("proveedores", [
+            "proveedores" => $this->getProveedoresConNumeroFila(),
+            "errorEliminarProveedor" => $errorEliminarProveedor
+        ]);
+    }
+
+    private function proveedorEdit(): void
+    {
+        $id = Validators::sanitizeId($_GET["id"] ?? $_POST["id"] ?? 0);
+        $proveedor = $id !== null ? DaoProveedor::getById($id) : null;
+
+        if (!$proveedor) {
+            Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+            exit;
+        }
+
+        if ($_SERVER["REQUEST_METHOD"] === "POST") {
+            if (!Security::validateCsrfPost()) {
+                Renderer::render("proveedor_edit", [
+                    "proveedor" => $proveedor,
+                    "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
+                ]);
+                return;
+            }
+
+            $nombre = Validators::sanitizeString($_POST["nombre"] ?? "");
+            $contacto = Validators::sanitizeString($_POST["contacto"] ?? "");
+            $telefono = Validators::sanitizeString($_POST["telefono"] ?? "");
+            $email = Validators::sanitizeString($_POST["email"] ?? "");
+            $direccion = Validators::sanitizeString($_POST["direccion"] ?? "");
+
+            if ($nombre === "") {
+                Renderer::render("proveedor_edit", [
+                    "proveedor" => array_merge($proveedor, [
+                        "nombre" => $nombre, "contacto" => $contacto, "telefono" => $telefono,
+                        "email" => $email, "direccion" => $direccion
+                    ]),
+                    "error" => "El nombre del proveedor es obligatorio."
+                ]);
+                return;
+            }
+
+            DaoProveedor::update($id, $nombre, $contacto, $telefono, $email, $direccion);
+            AuditLogger::log('editar', 'Compras', 'Proveedor actualizado: ' . $nombre, ['proveedor_id' => $id]);
+
+            Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+            exit;
+        }
+
+        Renderer::render("proveedor_edit", ["proveedor" => $proveedor]);
+    }
+
+    /**
+     * Desactiva un proveedor (no lo borra, solo lo oculta del combo de
+     * "Registrar compra" que solo lista proveedores ACT). Mismo patrón que
+     * Producto::disable() en Inventario.
+     */
+    private function proveedorDesactivar(): void
+    {
+        if ($_SERVER["REQUEST_METHOD"] !== "POST" || !Security::validateCsrfPost()) {
+            Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+            exit;
+        }
+
+        $id = Validators::sanitizeId($_POST["id"] ?? 0);
+        if ($id !== null) {
+            $proveedor = DaoProveedor::getById($id);
+            DaoProveedor::disable($id);
+            AuditLogger::log('eliminar', 'Compras', 'Proveedor desactivado: ' . ($proveedor['nombre'] ?? ''), ['proveedor_id' => $id]);
+        }
+
+        Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+        exit;
+    }
+
+    private function proveedorActivar(): void
+    {
+        if ($_SERVER["REQUEST_METHOD"] !== "POST" || !Security::validateCsrfPost()) {
+            Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+            exit;
+        }
+
+        $id = Validators::sanitizeId($_POST["id"] ?? 0);
+        if ($id !== null) {
+            $proveedor = DaoProveedor::getById($id);
+            DaoProveedor::enable($id);
+            AuditLogger::log('activar', 'Compras', 'Proveedor reactivado: ' . ($proveedor['nombre'] ?? ''), ['proveedor_id' => $id]);
+        }
+
+        Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+        exit;
+    }
+
+    /**
+     * Borrado DEFINITIVO de un proveedor. La base de datos lo rechaza sola
+     * (PDOException, SQLSTATE 23000) si el proveedor tiene facturas de
+     * compra registradas, porque factura_compra.proveedor_id usa
+     * ON DELETE RESTRICT a propósito. Mismo patrón que
+     * InventarioController::eliminar().
+     */
+    private function proveedorEliminar(): void
+    {
+        if ($_SERVER["REQUEST_METHOD"] !== "POST" || !Security::validateCsrfPost()) {
+            Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+            exit;
+        }
+
+        $id = Validators::sanitizeId($_POST["id"] ?? 0);
+        if ($id !== null) {
+            $proveedor = DaoProveedor::getById($id);
+            $nombreProveedor = $proveedor ? (string) $proveedor['nombre'] : '';
+
+            try {
+                DaoProveedor::delete($id);
+                AuditLogger::log('eliminar', 'Compras', 'Proveedor eliminado definitivamente: ' . $nombreProveedor, ['proveedor_id' => $id]);
+            } catch (\PDOException $ex) {
+                AuditLogger::log('error', 'Compras', 'No se pudo eliminar (tiene compras registradas): ' . $nombreProveedor, ['proveedor_id' => $id]);
+                Site::redirectTo("index.php?page=ComprasController&action=proveedores&errorEliminar=" . urlencode($nombreProveedor));
+                exit;
+            }
+        }
+
+        Site::redirectTo("index.php?page=ComprasController&action=proveedores");
+        exit;
     }
 }

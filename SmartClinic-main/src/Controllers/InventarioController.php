@@ -38,6 +38,10 @@ class InventarioController extends PrivateController
                 $this->eliminar();
                 break;
 
+            case "activar":
+                $this->activar();
+                break;
+
             case "ajustar":
                 $this->ajustar();
                 break;
@@ -124,6 +128,7 @@ class InventarioController extends PrivateController
         $productos = DaoProducto::getAll();
         foreach ($productos as &$producto) {
             $productoId = (int) $producto["id"];
+            $producto["esActivo"] = ($producto["estado"] ?? "") === "ACT";
 
             if ($saldosHistoricos === null) {
                 // Modo normal: lo de siempre, el stock en vivo.
@@ -167,14 +172,8 @@ class InventarioController extends PrivateController
         // poder viajar dentro de un atributo data-options (el motor de
         // plantillas de este proyecto no escapa automáticamente lo que
         // imprime).
-        $productosParaBuscador = array_map(function ($p) {
-            return ["id" => (int) $p["id"], "nombre" => (string) $p["nombre"]];
-        }, $productos);
-        $productosJsonAttr = htmlspecialchars(
-            json_encode($productosParaBuscador, JSON_UNESCAPED_UNICODE),
-            ENT_QUOTES,
-            'UTF-8'
-        );
+        $productosParaBuscador = $this->mapearParaBuscador($productos);
+        $productosJsonAttr = $this->jsonAttrParaAutocompletar($productosParaBuscador);
 
         // Si se buscó un producto puntual, la tabla de abajo se recorta a
         // solo ese producto (útil cuando hay muchos y no se quiere scrollear
@@ -217,12 +216,10 @@ class InventarioController extends PrivateController
         }
         unset($p);
 
-        $productosPorPagina = 25;
-        $totalProductosFiltrados = count($productos);
-        $totalPaginasProductos = max(1, (int) ceil($totalProductosFiltrados / $productosPorPagina));
-        $paginaProductos = Validators::sanitizeInt($_GET["pageProductos"] ?? 1, 1, $totalPaginasProductos) ?? 1;
-        $offsetProductos = ($paginaProductos - 1) * $productosPorPagina;
-        $productosPagina = array_slice($productos, $offsetProductos, $productosPorPagina);
+        $pagProductos = $this->paginar($productos, 25, "pageProductos");
+        $productosPagina = $pagProductos["items"];
+        $paginaProductos = $pagProductos["paginaActual"];
+        $totalPaginasProductos = $pagProductos["totalPaginas"];
 
         // URL base con los filtros de productos activos (búsqueda + fecha
         // de corte), para que "Anterior"/"Siguiente" no los pierda al
@@ -309,12 +306,10 @@ class InventarioController extends PrivateController
         unset($mov);
 
         // --- Paginación de "Movimientos recientes" ------------------------
-        $movimientosPorPagina = 25;
-        $totalMovimientosFiltrados = count($movimientosRecientes);
-        $totalPaginasMovimientos = max(1, (int) ceil($totalMovimientosFiltrados / $movimientosPorPagina));
-        $paginaMovimientos = Validators::sanitizeInt($_GET["pageMovimientos"] ?? 1, 1, $totalPaginasMovimientos) ?? 1;
-        $offsetMovimientos = ($paginaMovimientos - 1) * $movimientosPorPagina;
-        $movimientosRecientesPagina = array_slice($movimientosRecientes, $offsetMovimientos, $movimientosPorPagina);
+        $pagMovimientos = $this->paginar($movimientosRecientes, 25, "pageMovimientos");
+        $movimientosRecientesPagina = $pagMovimientos["items"];
+        $paginaMovimientos = $pagMovimientos["paginaActual"];
+        $totalPaginasMovimientos = $pagMovimientos["totalPaginas"];
 
         // URL base con los filtros de movimientos activos (búsqueda + rango
         // de fechas), para que "Anterior"/"Siguiente" no los pierda.
@@ -389,6 +384,51 @@ class InventarioController extends PrivateController
             'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n'
         ];
         return strtolower(strtr($texto, $sinAcentos));
+    }
+
+    /**
+     * Convierte productos o centros al formato {id, nombre} que necesita la
+     * barra de búsqueda con autocompletar (kardex-autocomplete.js). Se usa
+     * tanto en index() como en kardex() para no repetir el mismo array_map
+     * en los dos lugares.
+     */
+    private function mapearParaBuscador(array $items): array
+    {
+        return array_map(function ($item) {
+            return ["id" => (int) $item["id"], "nombre" => (string) $item["nombre"]];
+        }, $items);
+    }
+
+    /**
+     * Convierte una lista ya mapeada con mapearParaBuscador() a un texto
+     * JSON listo para meterse como atributo HTML (data-options), escapado
+     * porque el motor de plantillas de este proyecto no escapa lo que
+     * imprime automáticamente.
+     */
+    private function jsonAttrParaAutocompletar(array $opciones): string
+    {
+        return htmlspecialchars(json_encode($opciones, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * Pagina cualquier lista ya cargada en memoria: calcula el total de
+     * páginas, sanea el número de página actual (por si viene fuera de
+     * rango en la URL) y recorta el arreglo a la página pedida. $nombreParam
+     * es el nombre del parámetro GET a leer (distinto en cada tabla de la
+     * pantalla: pageProductos, pageMovimientos, pageNum) para poder paginar
+     * varias tablas independientes en la misma página.
+     */
+    private function paginar(array $items, int $porPagina, string $nombreParam): array
+    {
+        $total = count($items);
+        $totalPaginas = max(1, (int) ceil($total / $porPagina));
+        $paginaActual = Validators::sanitizeInt($_GET[$nombreParam] ?? 1, 1, $totalPaginas) ?? 1;
+        $offset = ($paginaActual - 1) * $porPagina;
+        return [
+            "items" => array_slice($items, $offset, $porPagina),
+            "paginaActual" => $paginaActual,
+            "totalPaginas" => $totalPaginas
+        ];
     }
 
     private function create(): void
@@ -476,6 +516,29 @@ class InventarioController extends PrivateController
             $producto = DaoProducto::getById($id);
             DaoProducto::disable($id);
             AuditLogger::log('eliminar', 'Inventario', 'Producto desactivado: ' . ($producto['nombre'] ?? ''), ['producto_id' => $id]);
+        }
+
+        Site::redirectTo("index.php?page=InventarioController&action=index");
+        exit;
+    }
+
+    /**
+     * Reactiva un producto que se había desactivado con delete(). No
+     * requiere confirmación aparte porque no borra nada, solo revierte el
+     * estado a ACT (vuelve a aparecer en los combos de compras/ajustes).
+     */
+    private function activar(): void
+    {
+        if ($_SERVER["REQUEST_METHOD"] !== "POST" || !Security::validateCsrfPost()) {
+            Site::redirectTo("index.php?page=InventarioController&action=index");
+            exit;
+        }
+
+        $id = Validators::sanitizeId($_POST["id"] ?? 0);
+        if ($id !== null) {
+            $producto = DaoProducto::getById($id);
+            DaoProducto::enable($id);
+            AuditLogger::log('activar', 'Inventario', 'Producto reactivado: ' . ($producto['nombre'] ?? ''), ['producto_id' => $id]);
         }
 
         Site::redirectTo("index.php?page=InventarioController&action=index");
@@ -739,22 +802,10 @@ class InventarioController extends PrivateController
         // por eso se escapa con htmlspecialchars: el motor de plantillas de
         // este proyecto no escapa automáticamente lo que imprime, y sin
         // este escape las comillas del JSON romperían el HTML del atributo.
-        $productosParaBuscador = array_map(function ($p) {
-            return ["id" => (int) $p["id"], "nombre" => (string) $p["nombre"]];
-        }, $productos);
-        $centrosParaBuscador = array_map(function ($c) {
-            return ["id" => (int) $c["id"], "nombre" => (string) $c["nombre"]];
-        }, $centros);
-        $productosJsonAttr = htmlspecialchars(
-            json_encode($productosParaBuscador, JSON_UNESCAPED_UNICODE),
-            ENT_QUOTES,
-            'UTF-8'
-        );
-        $centrosJsonAttr = htmlspecialchars(
-            json_encode($centrosParaBuscador, JSON_UNESCAPED_UNICODE),
-            ENT_QUOTES,
-            'UTF-8'
-        );
+        $productosParaBuscador = $this->mapearParaBuscador($productos);
+        $centrosParaBuscador = $this->mapearParaBuscador($centros);
+        $productosJsonAttr = $this->jsonAttrParaAutocompletar($productosParaBuscador);
+        $centrosJsonAttr = $this->jsonAttrParaAutocompletar($centrosParaBuscador);
 
         // Para que el campo de texto muestre el nombre ya seleccionado al
         // recargar la página (por ejemplo, al volver de "Filtrar").
@@ -819,12 +870,11 @@ class InventarioController extends PrivateController
         // esta pantalla lentísima y la tabla sería imposible de recorrer.
         // Los totales de arriba (Movimientos / Entradas / Salidas) se
         // calculan sobre el TOTAL filtrado, no solo la página visible.
-        $itemsPorPagina = 25;
         $totalMovimientosFiltrados = count($movimientos);
-        $totalPaginas = max(1, (int) ceil($totalMovimientosFiltrados / $itemsPorPagina));
-        $paginaActual = Validators::sanitizeInt($_GET["pageNum"] ?? 1, 1, $totalPaginas) ?? 1;
-        $offset = ($paginaActual - 1) * $itemsPorPagina;
-        $movimientosPagina = array_slice($movimientos, $offset, $itemsPorPagina);
+        $pagKardex = $this->paginar($movimientos, 25, "pageNum");
+        $movimientosPagina = $pagKardex["items"];
+        $paginaActual = $pagKardex["paginaActual"];
+        $totalPaginas = $pagKardex["totalPaginas"];
 
         // Se arma la URL base con los filtros actuales para que "Anterior"
         // y "Siguiente" no pierdan lo que el usuario ya había filtrado.

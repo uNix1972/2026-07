@@ -153,24 +153,28 @@
                         <td style="padding:14px; vertical-align:middle;">{{precio_unitario}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{estado}}</td>
                         <td style="padding:14px; vertical-align:middle;">
-                            <a href="index.php?page=InventarioController&action=edit&id={{id}}"
-                               style="background:#0260CB; color:white; padding:8px 12px; border-radius:8px; text-decoration:none; margin-right:5px;">
-                                Editar
-                            </a>
-                            <form method="POST" action="index.php?page=InventarioController&action=delete" style="display:inline; margin-right:5px;" data-confirm="¿Seguro que desea desactivar este producto? (esto no borra su historial, solo lo oculta de los combos de compras/ajustes)">
-                                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
-                                <input type="hidden" name="id" value="{{id}}">
-                                <button type="submit" style="background:#D63031;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;">
-                                    Desactivar
-                                </button>
-                            </form>
-                            <form method="POST" action="index.php?page=InventarioController&action=eliminar" style="display:inline;" data-confirm="¿ELIMINAR PERMANENTEMENTE este producto? Esta acción no se puede deshacer y borra también su historial de ajustes manuales. Si tiene compras registradas, no se podrá eliminar (usa Desactivar en ese caso).">
-                                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
-                                <input type="hidden" name="id" value="{{id}}">
-                                <button type="submit" style="background:#7F1D1D;color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font:inherit;">
-                                    Eliminar
-                                </button>
-                            </form>
+                            <div style="display:flex; justify-content:flex-end; flex-wrap:nowrap; gap:6px;">
+                                <a href="index.php?page=InventarioController&action=edit&id={{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Editar</a>
+                                {{if esActivo}}
+                                <form method="POST" action="index.php?page=InventarioController&action=delete" data-confirm="¿Seguro que desea desactivar este producto? (esto no borra su historial, solo lo oculta de los combos de compras/ajustes)">
+                                    <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                    <input type="hidden" name="id" value="{{id}}">
+                                    <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Desactivar</button>
+                                </form>
+                                {{endif esActivo}}
+                                {{ifnot esActivo}}
+                                <form method="POST" action="index.php?page=InventarioController&action=activar">
+                                    <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                    <input type="hidden" name="id" value="{{id}}">
+                                    <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Activar</button>
+                                </form>
+                                {{endifnot esActivo}}
+                                <form method="POST" action="index.php?page=InventarioController&action=eliminar" data-confirm="¿ELIMINAR PERMANENTEMENTE este producto? Esta acción no se puede deshacer y borra también su historial de ajustes manuales. Si tiene compras registradas, no se podrá eliminar (usa Desactivar en ese caso).">
+                                    <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                    <input type="hidden" name="id" value="{{id}}">
+                                    <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Eliminar</button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {{endfor productos}}

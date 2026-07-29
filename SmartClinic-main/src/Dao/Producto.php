@@ -88,6 +88,16 @@ class Producto extends Table
     }
 
     /**
+     * Reactiva un producto desactivado con disable(). Vuelve a aparecer en
+     * los combos de compras/ajustes que solo listan productos ACT.
+     */
+    public static function enable(int $id): bool
+    {
+        $sql = "UPDATE producto SET estado = 'ACT' WHERE id = :id";
+        return parent::executeNonQuery($sql, ["id" => $id]);
+    }
+
+    /**
      * Borra el producto DE VERDAD (a diferencia de disable(), que solo lo
      * marca como inactivo). OJO: esto es intencionalmente peligroso.
      *

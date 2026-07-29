@@ -6,6 +6,12 @@
     <div class="form-alert error" style="display:block; margin-bottom:16px;">{{error}}</div>
     {{endif error}}
 
+    {{if errorEliminarProveedor}}
+    <div style="background:#FEF2F2; border:1px solid #FCA5A5; border-radius:12px; padding:14px 18px; margin-bottom:20px; color:#991B1B;">
+        No se pudo eliminar "<strong>{{errorEliminarProveedor}}</strong>": tiene compras registradas y no se puede borrar sin perder esa historia. Usa "Desactivar" en su lugar.
+    </div>
+    {{endif errorEliminarProveedor}}
+
     <div class="form-card" style="margin-bottom:24px;">
         <h3 style="color:#033B9F; margin-bottom:16px;">Registrar proveedor</h3>
         <form method="POST" action="index.php?page=ComprasController&action=proveedores">
@@ -49,6 +55,7 @@
                         <th style="padding:15px;">Teléfono</th>
                         <th style="padding:15px;">Correo</th>
                         <th style="padding:15px;">Estado</th>
+                        <th style="padding:15px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -60,6 +67,30 @@
                         <td style="padding:14px; vertical-align:middle;">{{telefono}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{email}}</td>
                         <td style="padding:14px; vertical-align:middle;">{{estado}}</td>
+                        <td style="padding:14px; vertical-align:middle;">
+                            <div style="display:flex; justify-content:flex-end; flex-wrap:nowrap; gap:6px;">
+                                <a href="index.php?page=ComprasController&action=proveedor_edit&id={{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Editar</a>
+                                {{if esActivo}}
+                                <form method="POST" action="index.php?page=ComprasController&action=proveedor_desactivar" data-confirm="¿Seguro que desea desactivar este proveedor? (esto no borra su historial, solo lo oculta del combo de compras)">
+                                    <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                    <input type="hidden" name="id" value="{{id}}">
+                                    <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Desactivar</button>
+                                </form>
+                                {{endif esActivo}}
+                                {{ifnot esActivo}}
+                                <form method="POST" action="index.php?page=ComprasController&action=proveedor_activar">
+                                    <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                    <input type="hidden" name="id" value="{{id}}">
+                                    <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Activar</button>
+                                </form>
+                                {{endifnot esActivo}}
+                                <form method="POST" action="index.php?page=ComprasController&action=proveedor_eliminar" data-confirm="¿ELIMINAR PERMANENTEMENTE este proveedor? Esta acción no se puede deshacer. Si tiene compras registradas, no se podrá eliminar (usa Desactivar en ese caso).">
+                                    <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                                    <input type="hidden" name="id" value="{{id}}">
+                                    <button type="submit" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Eliminar</button>
+                                </form>
+                            </div>
+                        </td>
                     </tr>
                     {{endfor proveedores}}
                 </tbody>
