@@ -8,8 +8,38 @@ class Site
     {
         $donenv = new \Utilities\DotEnv("parameters.env");
         \Utilities\Context::setArrayToContext($donenv->load());
+        \Utilities\Context::setContext(
+            "BASE_DIR",
+            self::resolveBaseDir(
+                (string)\Utilities\Context::getContextByKey("BASE_DIR"),
+                (string)($_SERVER["SCRIPT_NAME"] ?? "")
+            )
+        );
         date_default_timezone_set(\Utilities\Context::getContextByKey("TIMEZONE"));
         \Utilities\Context::setContext('CURRENT_YEAR', date("Y"));
+    }
+
+    /**
+     * Uses an explicit BASE_DIR when configured and otherwise derives the
+     * application path from the executing front controller.
+     */
+    private static function resolveBaseDir(
+        string $configuredBaseDir,
+        string $scriptName
+    ): string {
+        $configuredBaseDir = trim(str_replace("\\", "/", $configuredBaseDir));
+        if ($configuredBaseDir !== "") {
+            return $configuredBaseDir === "/"
+                ? ""
+                : "/" . trim($configuredBaseDir, "/");
+        }
+
+        $scriptDirectory = str_replace("\\", "/", dirname($scriptName));
+        if ($scriptDirectory === "/" || $scriptDirectory === ".") {
+            return "";
+        }
+
+        return "/" . trim($scriptDirectory, "/");
     }
 
     public static function getPageRequest()

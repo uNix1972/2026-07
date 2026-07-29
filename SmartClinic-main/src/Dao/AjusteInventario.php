@@ -4,9 +4,9 @@ namespace Dao;
 /**
  * Acceso a datos para ajustes manuales de inventario.
  *
- * Cada ajuste pertenece a un producto y a un centro de salud. El stock del
- * producto continúa siendo global en esta fase, pero el centro identifica
- * dónde ocurrió físicamente la entrada, salida, merma o corrección.
+ * Cada ajuste pertenece a un producto y a un centro de salud. La transacción
+ * modifica el saldo autoritativo de esa ubicación y el total agregado del
+ * producto, conservando ambos valores sincronizados.
  */
 class AjusteInventario extends Table
 {
@@ -83,27 +83,13 @@ class AjusteInventario extends Table
         }
 
         try {
-            $producto = parent::obtenerUnRegistro(
-                "SELECT id, stock_actual
-                 FROM producto
-                 WHERE id = :id
-                 FOR UPDATE",
-                ["id" => $productoId],
+            $delta = $tipoAjuste === "SALIDA" ? -$cantidad : $cantidad;
+            InventarioCentro::ajustarStock(
+                $productoId,
+                $centroSaludId,
+                $delta,
                 $conn
             );
-            if (!$producto) {
-                throw new \RuntimeException(
-                    "El producto seleccionado ya no existe."
-                );
-            }
-
-            $delta = $tipoAjuste === "SALIDA" ? -$cantidad : $cantidad;
-            if ((int) $producto["stock_actual"] + $delta < 0) {
-                throw new \DomainException(
-                    "No hay suficiente stock disponible para registrar esta salida."
-                );
-            }
-
             Producto::ajustarStock($productoId, $delta, $conn);
             $adjustmentId = self::insert(
                 $productoId,

@@ -64,7 +64,7 @@
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
             <button type="button" class="btn btn--outline" onclick="window.print()">Imprimir</button>
             <a class="btn btn--outline" href="{{~urlExportarCsv}}">Exportar CSV</a>
-            <a href="index.php?page=InventarioController&action=index" class="btn btn--outline">Volver a Inventario</a>
+            <a href="index.php?page=InventarioController&action=index&centro_salud_id={{centroIdSeleccionadoValue}}" class="btn btn--outline">Volver a Inventario</a>
         </div>
     </div>
 
@@ -118,7 +118,7 @@
     <!-- Panel de verificación: solo aparece cuando se filtra por UN
          producto específico. Compara el saldo que resulta de sumar todo
          el historial de movimientos (ajustes + compras) contra el
-         stock_actual real guardado en la tabla producto. Si ambos números
+         saldo persistido para el centro seleccionado. Si ambos números
          coinciden, es la prueba de que el kárdex no se está "comiendo"
          ningún movimiento. -->
     {{if productoSeleccionado}}
@@ -126,8 +126,8 @@
     <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 4px 20px rgba(0,0,0,.08); margin-bottom:20px;">
         <h3 style="color:#111827; margin-bottom:10px;">Verificación de saldo — {{nombre}}</h3>
         <div style="display:flex; flex-wrap:wrap; gap:24px; align-items:center;">
-            <div><span style="color:#64748b;">Stock actual en sistema:</span> <strong>{{stock_actual}}</strong></div>
-            <div><span style="color:#64748b;">Saldo calculado desde el kárdex (todos los centros):</span> <strong>{{saldo_calculado}}</strong></div>
+            <div><span style="color:#64748b;">Stock persistido:</span> <strong>{{stock_actual}}</strong></div>
+            <div><span style="color:#64748b;">Saldo calculado desde el kárdex:</span> <strong>{{saldo_calculado}}</strong></div>
             {{if &saldoCuadra}}
             <div style="color:#0F9D58; font-weight:600;">✔ Cuadra: el historial explica el 100% del stock actual.</div>
             {{endif &saldoCuadra}}
@@ -139,14 +139,9 @@
     {{endwith productoSeleccionado}}
     {{endif productoSeleccionado}}
 
-    <!-- Nota aclaratoria: las compras a proveedor todavía no están ligadas
-         a un centro de salud específico (quedan en "Inventario general"),
-         así que al filtrar por un centro dejan de aparecer en la lista. Se
-         avisa esto explícitamente para que no parezca que el kárdex está
-         "perdiendo" movimientos otra vez. -->
     {{if filtroPorCentroActivo}}
-    <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; padding:14px 18px; margin-bottom:20px; color:#92400E;">
-        ℹ Al filtrar por un centro de salud, las compras a proveedor no aparecen en esta lista porque todavía se registran como "Inventario general" y no están ligadas a un centro específico. El saldo acumulado sí sigue reflejando el stock real del sistema completo.
+    <div style="background:#EAF2FF; border:1px solid #BFDBFE; border-radius:12px; padding:14px 18px; margin-bottom:20px; color:#1D4ED8;">
+        El saldo acumulado corresponde únicamente al centro de salud seleccionado e incluye tanto ajustes como compras.
     </div>
     {{endif filtroPorCentroActivo}}
 

@@ -29,7 +29,7 @@ class ClinicaAvanzada extends Table
     {
         $sql = "SELECT c.*, p.nombres AS paciente_nombres, p.apellidos AS paciente_apellidos,
                        p.telefono AS paciente_telefono, ec.nombre_estado,
-                       cs.nombre AS centro_nombre, mcs.consultorio,
+                       cs.nombre AS centro_nombre, c.consultorio,
                        sv.temperatura, sv.presion_sistolica, sv.presion_diastolica,
                        sv.frecuencia_cardiaca, sv.frecuencia_respiratoria,
                        sv.saturacion_oxigeno, sv.peso, sv.talla, sv.notas AS signos_notas
@@ -53,7 +53,7 @@ class ClinicaAvanzada extends Table
     {
         $sql = "SELECT c.*, p.nombres AS paciente_nombres, p.apellidos AS paciente_apellidos,
                        p.telefono AS paciente_telefono, ec.nombre_estado,
-                       cs.nombre AS centro_nombre, mcs.consultorio
+                       cs.nombre AS centro_nombre, c.consultorio
                 FROM cita c
                 INNER JOIN paciente p ON c.paciente_id = p.id
                 INNER JOIN estado_cita ec ON c.estado_id = ec.id
@@ -380,41 +380,161 @@ class ClinicaAvanzada extends Table
         return $row ?: null;
     }
 
-    public static function getCargaMedicos(): array
+    /**
+     * Obtiene la carga de médicos correspondiente a un centro de salud.
+     *
+     * Incluye asignaciones activas aunque todavía no tengan citas y conserva
+     * médicos con citas históricas aunque su asignación haya sido inactivada.
+     * Los dos parámetros tienen nombres distintos para mantener compatibilidad
+     * con las sentencias preparadas nativas de PDO.
+     */
+    public static function getCargaMedicos(int $centroSaludId): array
     {
-        $sql = "SELECT CONCAT(m.nombres, ' ', m.apellidos) AS medico, COUNT(c.id) AS total_citas
-                FROM medico m
-                LEFT JOIN cita c ON m.id = c.medico_id
+        $sql = "SELECT CONCAT(m.nombres, ' ', m.apellidos) AS medico,
+                       COUNT(c.id) AS total_citas
+                FROM medico_centro_salud mcs
+                INNER JOIN medico m ON m.id = mcs.medico_id
+                LEFT JOIN cita c
+                    ON c.medico_id = m.id
+                   AND c.centro_salud_id = :citas_centro_id
+                WHERE mcs.centro_salud_id = :asignacion_centro_id
+                  AND (mcs.estado = 'ACT' OR c.id IS NOT NULL)
                 GROUP BY m.id
                 ORDER BY total_citas DESC, medico ASC";
-        return parent::obtenerRegistros($sql, []);
+
+        return parent::obtenerRegistros($sql, [
+            'citas_centro_id' => $centroSaludId,
+            'asignacion_centro_id' => $centroSaludId
+        ]);
     }
 
-    public static function getMetricasBI(): array
+    /**
+     * Resume los principales indicadores operativos de un centro.
+     *
+     * Todas las subconsultas reciben un marcador independiente para evitar
+     * reutilizar parámetros nombrados en PDO. Los estados 3, 4 y 5 se
+     * consideran terminales al contar citas futuras activas. Los indicadores
+     * mensuales usan limites de fecha para conservar el uso de indices.
+     */
+    public static function getResumenBI(int $centroSaludId): array
+    {
+        $sql = "SELECT
+                    (
+                        SELECT COUNT(*)
+                        FROM cita
+                        WHERE centro_salud_id = :citas_centro_id
+                    ) AS total_citas,
+                    (
+                        SELECT COUNT(*)
+                        FROM cita
+                        WHERE centro_salud_id = :citas_mes_centro_id
+                          AND fecha_hora >= DATE_FORMAT(
+                              CURRENT_DATE,
+                              '%Y-%m-01'
+                          )
+                          AND fecha_hora < DATE_ADD(
+                              DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'),
+                              INTERVAL 1 MONTH
+                          )
+                    ) AS citas_mes_actual,
+                    (
+                        SELECT COUNT(*)
+                        FROM cita
+                        WHERE centro_salud_id = :futuras_centro_id
+                          AND fecha_hora >= CURRENT_TIMESTAMP
+                          AND estado_id NOT IN (3, 4, 5)
+                    ) AS citas_futuras,
+                    (
+                        SELECT COUNT(*)
+                        FROM medico_centro_salud
+                        WHERE centro_salud_id = :medicos_centro_id
+                          AND estado = 'ACT'
+                    ) AS medicos_asignados,
+                    (
+                        SELECT COALESCE(SUM(pf.total), 0)
+                        FROM pago_factura pf
+                        INNER JOIN cita c ON c.id = pf.cita_id
+                        WHERE c.centro_salud_id = :ingresos_centro_id
+                    ) AS ingresos_total,
+                    (
+                        SELECT COALESCE(SUM(pf.total), 0)
+                        FROM pago_factura pf
+                        INNER JOIN cita c ON c.id = pf.cita_id
+                        WHERE c.centro_salud_id = :ingresos_mes_centro_id
+                          AND pf.fecha_pago >= DATE_FORMAT(
+                              CURRENT_DATE,
+                              '%Y-%m-01'
+                          )
+                          AND pf.fecha_pago < DATE_ADD(
+                              DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'),
+                              INTERVAL 1 MONTH
+                          )
+                    ) AS ingresos_mes_actual";
+
+        $row = parent::obtenerUnRegistro($sql, [
+            'citas_centro_id' => $centroSaludId,
+            'citas_mes_centro_id' => $centroSaludId,
+            'futuras_centro_id' => $centroSaludId,
+            'medicos_centro_id' => $centroSaludId,
+            'ingresos_centro_id' => $centroSaludId,
+            'ingresos_mes_centro_id' => $centroSaludId
+        ]);
+
+        return is_array($row)
+            ? $row
+            : [
+                'total_citas' => 0,
+                'citas_mes_actual' => 0,
+                'citas_futuras' => 0,
+                'medicos_asignados' => 0,
+                'ingresos_total' => 0,
+                'ingresos_mes_actual' => 0
+            ];
+    }
+
+    /**
+     * Construye todas las series del tablero BI para un único centro.
+     *
+     * No existe una opción de inventario general en este método: citas,
+     * ingresos y carga médica se filtran siempre por $centroSaludId para
+     * impedir que el tablero mezcle ubicaciones.
+     */
+    public static function getMetricasBI(int $centroSaludId): array
     {
         $citasPorEstado = parent::obtenerRegistros(
             "SELECT ec.nombre_estado AS estado, COUNT(c.id) AS total
              FROM estado_cita ec
-             LEFT JOIN cita c ON ec.id = c.estado_id
+             LEFT JOIN cita c
+                ON ec.id = c.estado_id
+               AND c.centro_salud_id = :estado_centro_id
              GROUP BY ec.id
              ORDER BY ec.id",
-            []
+            ['estado_centro_id' => $centroSaludId]
         );
         $citasPorMes = parent::obtenerRegistros(
             "SELECT DATE_FORMAT(fecha_hora, '%Y-%m') AS mes, COUNT(*) AS total
-             FROM cita GROUP BY DATE_FORMAT(fecha_hora, '%Y-%m') ORDER BY mes",
-            []
+             FROM cita
+             WHERE centro_salud_id = :mes_centro_id
+             GROUP BY DATE_FORMAT(fecha_hora, '%Y-%m')
+             ORDER BY mes",
+            ['mes_centro_id' => $centroSaludId]
         );
         $ingresos = parent::obtenerRegistros(
-            "SELECT DATE_FORMAT(fecha_pago, '%Y-%m') AS mes, SUM(total) AS total
-             FROM pago_factura GROUP BY DATE_FORMAT(fecha_pago, '%Y-%m') ORDER BY mes",
-            []
+            "SELECT DATE_FORMAT(pf.fecha_pago, '%Y-%m') AS mes,
+                    SUM(pf.total) AS total
+             FROM pago_factura pf
+             INNER JOIN cita c ON c.id = pf.cita_id
+             WHERE c.centro_salud_id = :pago_centro_id
+             GROUP BY DATE_FORMAT(pf.fecha_pago, '%Y-%m')
+             ORDER BY mes",
+            ['pago_centro_id' => $centroSaludId]
         );
         return [
             'citasPorEstado' => $citasPorEstado,
             'citasPorMes' => $citasPorMes,
             'ingresos' => $ingresos,
-            'cargaMedicos' => self::getCargaMedicos(),
+            'cargaMedicos' => self::getCargaMedicos($centroSaludId),
+            'resumen' => self::getResumenBI($centroSaludId)
         ];
     }
 }

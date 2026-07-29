@@ -32,6 +32,70 @@ class MessageNotifier
         return self::sendMessage($number, $message);
     }
 
+    /**
+     * Notifica que una cita futura fue trasladada a otro consultorio.
+     */
+    public static function sendAppointmentRoomChanged(array $appointment): bool
+    {
+        if (!self::isEnabled()) {
+            return false;
+        }
+
+        $citaId = intval($appointment['id'] ?? 0);
+        $number = self::normalizePhone(
+            (string)($appointment['paciente_telefono'] ?? '')
+        );
+        if ($number === '') {
+            error_log(
+                'MessageNotifier: cambio de consultorio de cita #'
+                . $citaId
+                . ' no enviado porque el paciente no tiene telefono valido.'
+            );
+            return false;
+        }
+
+        $dateTime = self::parseDateTime(
+            (string)($appointment['fecha_hora'] ?? '')
+        );
+        $patientName = trim(
+            (string)($appointment['paciente_nombres'] ?? '')
+            . ' '
+            . (string)($appointment['paciente_apellidos'] ?? '')
+        );
+        $doctorName = trim(
+            (string)($appointment['medico_nombres'] ?? '')
+            . ' '
+            . (string)($appointment['medico_apellidos'] ?? '')
+        );
+        $centerName = trim(
+            (string)($appointment['centro_nombre'] ?? '')
+        );
+        $previousRoom = trim(
+            (string)($appointment['consultorio_anterior'] ?? '')
+        );
+        $newRoom = trim((string)($appointment['consultorio'] ?? ''));
+
+        $message = sprintf(
+            "Buen día %s.\n\n"
+            . "SmartClinic informa un cambio de consultorio para su cita "
+            . "con el Dr. %s.\n\n"
+            . "Día: %s\n"
+            . "Hora: %s\n"
+            . "Centro de salud: %s\n"
+            . "Consultorio anterior: %s\n"
+            . "Nuevo consultorio: %s",
+            $patientName !== '' ? $patientName : 'paciente',
+            $doctorName !== '' ? $doctorName : 'médico asignado',
+            self::formatSpanishDate($dateTime),
+            $dateTime->format('h:i A'),
+            $centerName !== '' ? $centerName : 'Por confirmar',
+            $previousRoom !== '' ? $previousRoom : 'Por confirmar',
+            $newRoom !== '' ? $newRoom : 'Por confirmar'
+        );
+
+        return self::sendMessage($number, $message);
+    }
+
     private static function isEnabled(): bool
     {
         $enabled = strtolower(self::config('WHATSAPP_ENABLED', '0'));

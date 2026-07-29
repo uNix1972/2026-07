@@ -168,6 +168,7 @@ class PacientePortalController extends PrivateController
             $pacienteId,
             $medicoId,
             $centroSaludId,
+            strval($ubicacion['consultorio'] ?? ''),
             1,
             $fechaHora
         );

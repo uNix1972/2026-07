@@ -45,10 +45,10 @@
     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px;">
         <h2 style="font-size:3rem; color:#111827;">Inventario</h2>
         <div style="display:flex; gap:10px;">
-            <button type="button" class="btn btn--outline" onclick="window.location.href='index.php?page=InventarioController&action=kardex'">
+            <button type="button" class="btn btn--outline" onclick="window.location.href='index.php?page=InventarioController&action=kardex&centro_salud_id={{centroSaludId}}'">
                 Ver kárdex
             </button>
-            <button type="button" class="btn btn--outline" onclick="window.location.href='index.php?page=InventarioController&action=ajustar'">
+            <button type="button" class="btn btn--outline" onclick="window.location.href='index.php?page=InventarioController&action=ajustar&centro_salud_id={{centroSaludId}}'">
                 Ajustar stock
             </button>
             <button type="button" class="btn btn--primary"
@@ -65,10 +65,36 @@
     </div>
     {{endif errorEliminarProducto}}
 
+    {{if sinCentros}}
+    <div style="background:#FEF2F2; border:1px solid #FCA5A5; border-radius:12px; padding:14px 18px; margin-bottom:20px; color:#991B1B;">
+        No hay centros de salud activos. Registre o active uno antes de operar inventario.
+    </div>
+    {{endif sinCentros}}
+
+    {{ifnot sinCentros}}
+    <div style="background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 4px 20px rgba(0,0,0,.08); margin-bottom:24px;">
+        <form method="GET" action="index.php" style="display:flex; flex-wrap:wrap; align-items:end; gap:14px;">
+            <input type="hidden" name="page" value="InventarioController">
+            <input type="hidden" name="action" value="index">
+            <div style="min-width:280px;">
+                <label for="centro_inventario" style="display:block; font-size:.85rem; color:#334155; margin-bottom:4px;">Centro de salud</label>
+                <select id="centro_inventario" name="centro_salud_id" style="padding:10px 12px; min-width:280px;" onchange="this.form.submit()">
+                    {{foreach centros}}
+                    <option value="{{id}}" {{if selected}}selected{{endif selected}}>{{nombre}} - {{ciudad}}</option>
+                    {{endfor centros}}
+                </select>
+            </div>
+            <noscript><button type="submit" class="btn btn--primary">Cambiar centro</button></noscript>
+        </form>
+        <p style="margin:10px 0 0; color:#64748b;">Existencias de <strong>{{centroNombreSeleccionado}}</strong>.</p>
+    </div>
+    {{endifnot sinCentros}}
+
     <div id="buscar-producto" style="background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 4px 20px rgba(0,0,0,.08); margin-bottom:24px;">
         <form method="GET" action="index.php#buscar-producto" style="display:flex; flex-wrap:wrap; align-items:end; gap:14px;">
             <input type="hidden" name="page" value="InventarioController">
             <input type="hidden" name="action" value="index">
+            <input type="hidden" name="centro_salud_id" value="{{centroSaludId}}">
             <div class="sc-combo" data-sc-combo style="min-width:280px; flex:1 1 280px;">
                 <label for="producto_buscador" style="display:block; font-size:.85rem; color:#334155; margin-bottom:4px;">Buscar producto</label>
                 <input type="text" id="producto_buscador" name="q" class="sc-combo-input" autocomplete="off" placeholder="Escribe el nombre del producto..." value="{{productoBuscadoNombre}}" data-sc-combo-input data-options="{{~productosJsonAttr}}">
@@ -82,7 +108,7 @@
             {{if hayBusquedaProducto}}
             <div>
                 <label style="display:block; font-size:.85rem; margin-bottom:4px; visibility:hidden;">Acción</label>
-                <a href="index.php?page=InventarioController&action=index#buscar-producto" style="display:inline-block; padding:10px 4px; font-weight:600;">Quitar búsqueda</a>
+                <a href="index.php?page=InventarioController&action=index&centro_salud_id={{centroSaludId}}#buscar-producto" style="display:inline-block; padding:10px 4px; font-weight:600;">Quitar búsqueda</a>
             </div>
             {{endif hayBusquedaProducto}}
         </form>
@@ -99,6 +125,7 @@
         <form method="GET" action="index.php#inventario-historico" style="display:flex; flex-wrap:wrap; align-items:end; gap:14px;">
             <input type="hidden" name="page" value="InventarioController">
             <input type="hidden" name="action" value="index">
+            <input type="hidden" name="centro_salud_id" value="{{centroSaludId}}">
             <div>
                 <label style="display:block; font-size:.85rem; color:#334155; margin-bottom:4px;">Ver inventario en una fecha específica</label>
                 <input type="date" name="fecha_corte" value="{{fechaCorte}}" style="padding:10px 12px; font-size:1rem; border:1px solid #CBD5E1; border-radius:8px; min-width:170px;">
@@ -110,13 +137,13 @@
             {{if modoHistorico}}
             <div>
                 <label style="display:block; font-size:.85rem; margin-bottom:4px; visibility:hidden;">Acción</label>
-                <a href="index.php?page=InventarioController&action=index#inventario-historico" style="display:inline-block; padding:10px 4px; font-weight:600;">Volver a inventario actual</a>
+                <a href="index.php?page=InventarioController&action=index&centro_salud_id={{centroSaludId}}#inventario-historico" style="display:inline-block; padding:10px 4px; font-weight:600;">Volver a inventario actual</a>
             </div>
             {{endif modoHistorico}}
         </form>
         {{if modoHistorico}}
         <p style="margin-top:12px; padding:10px 14px; background:#FFF7E0; border:1px solid #F5C542; border-radius:8px; color:#7A5B00;">
-            Mostrando el inventario reconstruido a partir de los movimientos registrados hasta el <strong>{{fechaCorte}}</strong> (no es el stock actual).
+            Mostrando el inventario de <strong>{{centroNombreSeleccionado}}</strong> reconstruido hasta el <strong>{{fechaCorte}}</strong>.
         </p>
         {{endif modoHistorico}}
     </div>
@@ -129,7 +156,7 @@
                         <th style="padding:15px; text-align:left;">ID</th>
                         <th style="padding:15px;">Producto</th>
                         <th style="padding:15px;">Unidad</th>
-                        <th style="padding:15px;">{{if modoHistorico}}Stock al {{fechaCorte}}{{endif modoHistorico}}{{ifnot modoHistorico}}Stock actual{{endifnot modoHistorico}}</th>
+                        <th style="padding:15px;">{{if modoHistorico}}Stock al {{fechaCorte}}{{endif modoHistorico}}{{ifnot modoHistorico}}Stock en el centro{{endifnot modoHistorico}}</th>
                         <th style="padding:15px;">Stock mínimo</th>
                         <th style="padding:15px;">Precio unitario</th>
                         <th style="padding:15px;">Estado</th>
@@ -205,11 +232,12 @@
     <div id="movimientos-recientes" style="background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,.08);">
         <div style="padding:20px 15px 0 15px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px;">
             <h3 style="color:#111827;">Movimientos recientes</h3>
-            <a href="index.php?page=InventarioController&action=kardex" style="font-weight:600;">Ver kárdex completo</a>
+            <a href="index.php?page=InventarioController&action=kardex&centro_salud_id={{centroSaludId}}" style="font-weight:600;">Ver kárdex completo</a>
         </div>
         <form method="GET" action="index.php#movimientos-recientes" style="display:flex; flex-wrap:wrap; align-items:end; gap:14px; padding:12px 15px 16px 15px;">
             <input type="hidden" name="page" value="InventarioController">
             <input type="hidden" name="action" value="index">
+            <input type="hidden" name="centro_salud_id" value="{{centroSaludId}}">
             <div class="sc-combo" data-sc-combo style="min-width:240px; flex:1 1 240px;">
                 <label for="mov_producto_buscador" style="display:block; font-size:.85rem; color:#334155; margin-bottom:4px;">Producto</label>
                 <input type="text" id="mov_producto_buscador" name="mov_q" class="sc-combo-input" autocomplete="off" placeholder="Buscar producto..." value="{{movProductoBuscadoNombre}}" data-sc-combo-input data-options="{{~productosJsonAttrMov}}">
@@ -230,7 +258,7 @@
             </div>
             <div>
                 <label style="display:block; font-size:.85rem; margin-bottom:4px; visibility:hidden;">Acción</label>
-                <a href="index.php?page=InventarioController&action=index#movimientos-recientes" style="display:inline-block; padding:10px 4px; font-weight:600;">Quitar filtro</a>
+                <a href="index.php?page=InventarioController&action=index&centro_salud_id={{centroSaludId}}#movimientos-recientes" style="display:inline-block; padding:10px 4px; font-weight:600;">Quitar filtro</a>
             </div>
         </form>
         {{if movBusquedaSinResultados}}

@@ -5,6 +5,7 @@ use Views\Renderer;
 use Dao\FacturaCompra as DaoFacturaCompra;
 use Dao\Proveedor as DaoProveedor;
 use Dao\Producto as DaoProducto;
+use Dao\CentroSalud as DaoCentroSalud;
 use Utilities\Security;
 use Utilities\Site;
 use Utilities\Validators;
@@ -61,7 +62,9 @@ class ComprasController extends PrivateController
 
     private function index(): void
     {
-        $facturas = DaoFacturaCompra::getAll();
+        $centroSaludId =
+            Validators::sanitizeId($_GET["centro_salud_id"] ?? "");
+        $facturas = DaoFacturaCompra::getAll($centroSaludId);
         $numeroFila = 1;
         foreach ($facturas as &$factura) {
             $factura["numero_fila"] = $numeroFila;
@@ -69,7 +72,15 @@ class ComprasController extends PrivateController
         }
         unset($factura);
 
-        Renderer::render("compras", ["facturas" => $facturas]);
+        Renderer::render("compras", [
+            "facturas" => $facturas,
+            "centros" => $this->buildCentrosOpciones(
+                $centroSaludId ?? 0,
+                false
+            ),
+            "centroSaludId" =>
+                $centroSaludId !== null ? (string) $centroSaludId : ""
+        ]);
     }
 
     private function buildUnidadesPorCajaMap(): array
@@ -131,6 +142,30 @@ class ComprasController extends PrivateController
         }, DaoProveedor::getActivos());
     }
 
+    /**
+     * Prepara centros para formularios y filtros de compras.
+     *
+     * Los formularios solo permiten centros activos; el listado permite
+     * incluir inactivos para no ocultar compras historicas.
+     */
+    private function buildCentrosOpciones(
+        int $centroSaludIdSeleccionado,
+        bool $soloActivos = true
+    ): array {
+        $centros = $soloActivos
+            ? DaoCentroSalud::getActivos()
+            : DaoCentroSalud::getAll();
+
+        return array_map(
+            function ($centro) use ($centroSaludIdSeleccionado) {
+                $centro["selected"] =
+                    (int) $centro["id"] === $centroSaludIdSeleccionado;
+                return $centro;
+            },
+            $centros
+        );
+    }
+
     private function buildDetalleParaEdicion(array $detalle): array
     {
         $productosActivos = DaoProducto::getActivos();
@@ -185,17 +220,31 @@ class ComprasController extends PrivateController
 
     private function create(): void
     {
+        $centrosActivos = DaoCentroSalud::getActivos();
+        $centroPredeterminado = count($centrosActivos) > 0
+            ? (int) $centrosActivos[0]["id"]
+            : 0;
+
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
+            $centroSaludId =
+                Validators::sanitizeId($_POST["centro_salud_id"] ?? 0);
             if (!Security::validateCsrfPost()) {
                 Renderer::render("compra_create", [
                     "proveedores" => DaoProveedor::getActivos(),
                     "productos" => DaoProducto::getActivos(),
+                    "centros" => $this->buildCentrosOpciones(
+                        $centroSaludId ?? $centroPredeterminado
+                    ),
+                    "sinCentros" => count($centrosActivos) === 0,
                     "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
                 ]);
                 return;
             }
 
             $proveedorId = Validators::sanitizeId($_POST["proveedor_id"] ?? 0);
+            $centro = $centroSaludId !== null
+                ? DaoCentroSalud::getById($centroSaludId)
+                : null;
             $productoIds = $_POST["producto_id"] ?? [];
             $cantidades = $_POST["cantidad"] ?? [];
             $precios = $_POST["precio_unitario"] ?? [];
@@ -204,7 +253,13 @@ class ComprasController extends PrivateController
             $lineas = [];
             $error = null;
 
-            if ($proveedorId === null) {
+            if (
+                $centroSaludId === null
+                || !$centro
+                || ($centro["estado"] ?? "") !== "ACT"
+            ) {
+                $error = "Seleccione un centro de salud activo.";
+            } elseif ($proveedorId === null) {
                 $error = "Seleccione un proveedor.";
             } elseif (!is_array($productoIds) || count($productoIds) === 0) {
                 $error = "Agregue al menos un producto a la compra.";
@@ -220,13 +275,32 @@ class ComprasController extends PrivateController
                 Renderer::render("compra_create", [
                     "proveedores" => DaoProveedor::getActivos(),
                     "productos" => DaoProducto::getActivos(),
+                    "centros" => $this->buildCentrosOpciones(
+                        $centroSaludId ?? $centroPredeterminado
+                    ),
+                    "sinCentros" => count($centrosActivos) === 0,
                     "error" => $error
                 ]);
                 return;
             }
 
-            $resultado = DaoFacturaCompra::insertConDetalle($proveedorId, Security::getUserId(), $lineas);
-            AuditLogger::log('crear', 'Compras', 'Factura de compra registrada: ' . $resultado['numero_factura'], ['factura_compra_id' => $resultado['id']]);
+            $resultado = DaoFacturaCompra::insertConDetalle(
+                $proveedorId,
+                $centroSaludId,
+                Security::getUserId(),
+                $lineas
+            );
+            AuditLogger::log(
+                'crear',
+                'Compras',
+                'Factura de compra registrada: '
+                    . $resultado['numero_factura']
+                    . ' para ' . $centro["nombre"],
+                [
+                    'factura_compra_id' => $resultado['id'],
+                    'centro_salud_id' => $centroSaludId
+                ]
+            );
 
             Site::redirectTo("index.php?page=ComprasController&action=view&id=" . $resultado['id']);
             exit;
@@ -234,7 +308,11 @@ class ComprasController extends PrivateController
 
         Renderer::render("compra_create", [
             "proveedores" => DaoProveedor::getActivos(),
-            "productos" => DaoProducto::getActivos()
+            "productos" => DaoProducto::getActivos(),
+            "centros" => $this->buildCentrosOpciones(
+                $centroPredeterminado
+            ),
+            "sinCentros" => count($centrosActivos) === 0
         ]);
     }
 
@@ -249,10 +327,16 @@ class ComprasController extends PrivateController
         }
 
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
+            $centroSaludId =
+                Validators::sanitizeId($_POST["centro_salud_id"] ?? 0);
             if (!Security::validateCsrfPost()) {
                 Renderer::render("compra_edit", [
                     "factura" => $factura,
                     "proveedores" => $this->buildProveedoresOpciones((int) $factura["proveedor_id"]),
+                    "centros" => $this->buildCentrosOpciones(
+                        $centroSaludId
+                            ?? (int) $factura["centro_salud_id"]
+                    ),
                     "detalle" => $this->buildDetalleParaEdicion(DaoFacturaCompra::getDetalleByFactura($id)),
                     "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
                 ]);
@@ -260,6 +344,9 @@ class ComprasController extends PrivateController
             }
 
             $proveedorId = Validators::sanitizeId($_POST["proveedor_id"] ?? 0);
+            $centro = $centroSaludId !== null
+                ? DaoCentroSalud::getById($centroSaludId)
+                : null;
             $productoIds = $_POST["producto_id"] ?? [];
             $cantidades = $_POST["cantidad"] ?? [];
             $precios = $_POST["precio_unitario"] ?? [];
@@ -268,7 +355,13 @@ class ComprasController extends PrivateController
             $lineas = [];
             $error = null;
 
-            if ($proveedorId === null) {
+            if (
+                $centroSaludId === null
+                || !$centro
+                || ($centro["estado"] ?? "") !== "ACT"
+            ) {
+                $error = "Seleccione un centro de salud activo.";
+            } elseif ($proveedorId === null) {
                 $error = "Seleccione un proveedor.";
             } elseif (!is_array($productoIds) || count($productoIds) === 0) {
                 $error = "Agregue al menos un producto a la compra.";
@@ -284,14 +377,49 @@ class ComprasController extends PrivateController
                 Renderer::render("compra_edit", [
                     "factura" => $factura,
                     "proveedores" => $this->buildProveedoresOpciones($proveedorId ?? (int) $factura["proveedor_id"]),
+                    "centros" => $this->buildCentrosOpciones(
+                        $centroSaludId
+                            ?? (int) $factura["centro_salud_id"]
+                    ),
                     "detalle" => $this->buildDetalleParaEdicion(DaoFacturaCompra::getDetalleByFactura($id)),
                     "error" => $error
                 ]);
                 return;
             }
 
-            DaoFacturaCompra::updateConDetalle($id, $proveedorId, $lineas);
-            AuditLogger::log('editar', 'Compras', 'Factura de compra actualizada: ' . $factura['numero_factura'], ['factura_compra_id' => $id]);
+            try {
+                DaoFacturaCompra::updateConDetalle(
+                    $id,
+                    $proveedorId,
+                    $centroSaludId,
+                    $lineas
+                );
+            } catch (\DomainException $errorStock) {
+                Renderer::render("compra_edit", [
+                    "factura" => $factura,
+                    "proveedores" =>
+                        $this->buildProveedoresOpciones($proveedorId),
+                    "centros" => $this->buildCentrosOpciones(
+                        $centroSaludId
+                    ),
+                    "detalle" => $this->buildDetalleParaEdicion(
+                        DaoFacturaCompra::getDetalleByFactura($id)
+                    ),
+                    "error" => $errorStock->getMessage()
+                ]);
+                return;
+            }
+            AuditLogger::log(
+                'editar',
+                'Compras',
+                'Factura de compra actualizada: '
+                    . $factura['numero_factura']
+                    . ' para ' . $centro["nombre"],
+                [
+                    'factura_compra_id' => $id,
+                    'centro_salud_id' => $centroSaludId
+                ]
+            );
 
             Site::redirectTo("index.php?page=ComprasController&action=view&id=" . $id);
             exit;
@@ -300,6 +428,9 @@ class ComprasController extends PrivateController
         Renderer::render("compra_edit", [
             "factura" => $factura,
             "proveedores" => $this->buildProveedoresOpciones((int) $factura["proveedor_id"]),
+            "centros" => $this->buildCentrosOpciones(
+                (int) $factura["centro_salud_id"]
+            ),
             "detalle" => $this->buildDetalleParaEdicion(DaoFacturaCompra::getDetalleByFactura($id))
         ]);
     }

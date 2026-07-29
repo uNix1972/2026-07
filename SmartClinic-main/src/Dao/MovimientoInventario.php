@@ -12,21 +12,18 @@ namespace Dao;
  *      tabla `ajuste_inventario` con tipo_ajuste ENTRADA o SALIDA y el centro
  *      de salud donde ocurrió el movimiento.
  *
- *   2) Compras a proveedor (ComprasController::create/edit) -> el stock se
- *      incrementa directo con Producto::ajustarStock() y el detalle queda
- *      en `factura_compra_detalle`, pero NO se escribe nada en
- *      `ajuste_inventario`.
+ *   2) Compras a proveedor (ComprasController::create/edit) -> el centro
+ *      destino vive en `factura_compra` y cada producto comprado se obtiene
+ *      de `factura_compra_detalle`.
  *
  * Es decir: hoy existen dos fuentes de verdad separadas para los
  * movimientos de inventario. Si el Kárdex solo leyera `ajuste_inventario`,
  * las entradas por compra serían invisibles y el kárdex no cuadraría con
  * el stock_actual real del producto.
  *
- * En vez de modificar ComprasController (que ya funciona y es de otro
- * compañero), esta clase UNE ambas fuentes con una consulta UNION ALL y
- * expone una sola lista de movimientos con columnas homogéneas. Así el
- * Kárdex tiene un único punto de lectura y no importa si el movimiento
- * nació de un ajuste manual o de una compra.
+ * Esta clase une ambas fuentes con UNION ALL y expone una sola lista de
+ * movimientos. Como las dos fuentes tienen centro, el Kardex puede reconstruir
+ * el saldo real de una ubicacion sin mezclar existencias de otras sedes.
  */
 class MovimientoInventario extends Table
 {
@@ -44,19 +41,21 @@ class MovimientoInventario extends Table
      *   - referencia        (VARCHAR)   motivo del ajuste, o "Factura FC-0001 - Proveedor X" si es compra
      *   - usuario_id        (INT|NULL)
      *   - usuario_nombre    (VARCHAR)   quién registró el movimiento, o "Sistema" si no se guardó usuario
-     *   - centro_salud_id   (INT|NULL)  null para compras todavía globales
-     *   - centro_nombre     (VARCHAR)   centro del ajuste o "Inventario general"
+     *   - centro_salud_id   (INT)        ubicacion del movimiento
+     *   - centro_nombre     (VARCHAR)    centro del ajuste o compra
      *
      * @param int|null    $productoId   Filtra por un producto específico (null = todos)
      * @param string|null $fechaInicio  Formato 'YYYY-MM-DD' (null = sin límite inferior)
      * @param string|null $fechaFin     Formato 'YYYY-MM-DD' (null = sin límite superior)
-     * @param string      $orden        'ASC' o 'DESC' (ASC es necesario para calcular saldo acumulado en orden cronológico)
+     * @param string      $orden        'ASC' o 'DESC'
+     * @param int|null    $centroSaludId Filtra una ubicacion (null = todas)
      */
     public static function getMovimientos(
         ?int $productoId = null,
         ?string $fechaInicio = null,
         ?string $fechaFin = null,
-        string $orden = 'ASC'
+        string $orden = 'ASC',
+        ?int $centroSaludId = null
     ): array {
         // --- Bloque 1: ajustes manuales -------------------------------------------------
         // Cada fila de ajuste_inventario ya representa un único movimiento
@@ -81,6 +80,7 @@ class MovimientoInventario extends Table
             WHERE (:producto_id_1 IS NULL OR ai.producto_id = :producto_id_1)
               AND (:fecha_inicio_1 IS NULL OR ai.fecha_ajuste >= :fecha_inicio_1)
               AND (:fecha_fin_1 IS NULL OR ai.fecha_ajuste < DATE_ADD(:fecha_fin_1, INTERVAL 1 DAY))
+              AND (:centro_salud_id_1 IS NULL OR ai.centro_salud_id = :centro_salud_id_1)
         ";
 
         // --- Bloque 2: compras a proveedor -----------------------------------------------
@@ -101,16 +101,18 @@ class MovimientoInventario extends Table
                 CONCAT('Factura ', fc.numero_factura, ' - ', pr.nombre)     AS referencia,
                 fc.usuario_id                                               AS usuario_id,
                 COALESCE(u2.username, 'Sistema')                            AS usuario_nombre,
-                NULL                                                        AS centro_salud_id,
-                'Inventario general'                                        AS centro_nombre
+                fc.centro_salud_id                                          AS centro_salud_id,
+                cs2.nombre                                                  AS centro_nombre
             FROM factura_compra_detalle fcd
             JOIN factura_compra fc  ON fc.id = fcd.factura_compra_id
             JOIN proveedor pr       ON pr.id = fc.proveedor_id
             JOIN producto p         ON p.id = fcd.producto_id
+            JOIN centro_salud cs2    ON cs2.id = fc.centro_salud_id
             LEFT JOIN usuario u2    ON u2.usercod = fc.usuario_id
             WHERE (:producto_id_2 IS NULL OR fcd.producto_id = :producto_id_2)
               AND (:fecha_inicio_2 IS NULL OR fc.fecha_compra >= :fecha_inicio_2)
               AND (:fecha_fin_2 IS NULL OR fc.fecha_compra < DATE_ADD(:fecha_fin_2, INTERVAL 1 DAY))
+              AND (:centro_salud_id_2 IS NULL OR fc.centro_salud_id = :centro_salud_id_2)
         ";
 
         // --- Unión de ambas fuentes --------------------------------------------------------
@@ -128,9 +130,11 @@ class MovimientoInventario extends Table
             "producto_id_1"  => $productoId,
             "fecha_inicio_1" => $fechaInicio,
             "fecha_fin_1"    => $fechaFin,
+            "centro_salud_id_1" => $centroSaludId,
             "producto_id_2"  => $productoId,
             "fecha_inicio_2" => $fechaInicio,
             "fecha_fin_2"    => $fechaFin,
+            "centro_salud_id_2" => $centroSaludId,
         ];
 
         return parent::obtenerRegistros($sql, $params);
@@ -158,19 +162,8 @@ class MovimientoInventario extends Table
      *                                    (ignorando fechaInicio) para que el saldo
      *                                    acumulado sea correcto, y luego se recorta
      *                                    la salida al rango de fechas pedido.
-     * @param int|null    $centroSaludId  Igual de importante: el stock (producto.stock_actual)
-     *                                    sigue siendo GLOBAL, no por centro. Por eso el filtro
-     *                                    de centro NUNCA se manda a getMovimientos(): el saldo
-     *                                    acumulado siempre se calcula con el historial completo
-     *                                    (todos los centros + compras), y solo AL FINAL se
-     *                                    recortan de la lista visible las filas que no sean del
-     *                                    centro pedido. Así la columna "saldo acumulado" sigue
-     *                                    reflejando el stock real del sistema en cada momento,
-     *                                    aunque en pantalla solo se vean los movimientos de un
-     *                                    centro en particular. Las compras (que todavía no están
-     *                                    ligadas a ningún centro) quedan fuera de la vista en
-     *                                    cuanto se filtra por un centro específico, porque no
-     *                                    ocurrieron físicamente en ese centro.
+     * @param int|null    $centroSaludId  Limita movimientos y saldo acumulado
+     *                                    a un centro. Null calcula el total.
      */
     public static function getMovimientosConSaldo(
         ?int $productoId = null,
@@ -178,13 +171,15 @@ class MovimientoInventario extends Table
         ?string $fechaFin = null,
         ?int $centroSaludId = null
     ): array {
-        // Se trae SIEMPRE el historial completo en orden ascendente (desde
-        // el principio de los tiempos) para poder calcular un saldo
-        // acumulado correcto; filtrar por fecha_inicio antes de sumar
-        // rompería el acumulado (empezaría a contar desde un número
-        // arbitrario en vez de desde 0). Tampoco se filtra por centro aquí,
-        // por la misma razón (ver comentario del parámetro arriba).
-        $movimientos = self::getMovimientos($productoId, null, $fechaFin, 'ASC');
+        // Se trae el historial completo del centro en orden ascendente. No se
+        // aplica fechaInicio hasta terminar el saldo acumulado.
+        $movimientos = self::getMovimientos(
+            $productoId,
+            null,
+            $fechaFin,
+            'ASC',
+            $centroSaludId
+        );
 
         $saldosPorProducto = [];
         foreach ($movimientos as &$mov) {
@@ -208,16 +203,6 @@ class MovimientoInventario extends Table
             }));
         }
 
-        // Y se recorta también por centro de salud, si se pidió uno. Las
-        // compras tienen centro_salud_id = NULL (ver getMovimientos), así
-        // que un producto_id INT jamás las va a igualar: desaparecen de la
-        // vista filtrada por centro, tal como se explica arriba.
-        if ($centroSaludId !== null) {
-            $movimientos = array_values(array_filter($movimientos, function ($mov) use ($centroSaludId) {
-                return (int) ($mov['centro_salud_id'] ?? 0) === $centroSaludId;
-            }));
-        }
-
         return $movimientos;
     }
 
@@ -238,9 +223,18 @@ class MovimientoInventario extends Table
      *                           final de este día" (mismo criterio que usa
      *                           fechaFin en getMovimientos).
      */
-    public static function getSaldosPorProductoAFecha(string $fechaCorte): array
+    public static function getSaldosPorProductoAFecha(
+        string $fechaCorte,
+        ?int $centroSaludId = null
+    ): array
     {
-        $movimientos = self::getMovimientos(null, null, $fechaCorte, 'ASC');
+        $movimientos = self::getMovimientos(
+            null,
+            null,
+            $fechaCorte,
+            'ASC',
+            $centroSaludId
+        );
 
         $saldosPorProducto = [];
         foreach ($movimientos as $mov) {
@@ -262,9 +256,18 @@ class MovimientoInventario extends Table
      * acumulado (eso es lo que sí calcula getMovimientosConSaldo, pensado
      * para la pantalla de Kárdex).
      */
-    public static function getRecientes(int $limit = 10): array
+    public static function getRecientes(
+        int $limit = 10,
+        ?int $centroSaludId = null
+    ): array
     {
-        $movimientos = self::getMovimientos(null, null, null, 'DESC');
+        $movimientos = self::getMovimientos(
+            null,
+            null,
+            null,
+            'DESC',
+            $centroSaludId
+        );
         return array_slice($movimientos, 0, $limit);
     }
 }

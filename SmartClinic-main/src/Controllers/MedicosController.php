@@ -7,6 +7,7 @@ use Dao\Especialidad as DaoEspecialidad;
 use Dao\MedicoCentroSalud as DaoMedicoCentroSalud;
 use Dao\Medicos as DaoMedicos;
 use Utilities\AuditLogger;
+use Utilities\MessageNotifier;
 use Utilities\Security;
 use Utilities\Site;
 use Utilities\Validators;
@@ -81,6 +82,9 @@ class MedicosController extends PublicController
             Security::isLogged() && !$this->viewData["showCrudActions"];
         $this->viewData["searchValue"] = $search;
         $this->viewData["especialidadFilter"] = $especialidad;
+        $this->viewData["consultorioNotice"] =
+            $_SESSION["medicos_consultorio_notice"] ?? "";
+        unset($_SESSION["medicos_consultorio_notice"]);
         $this->viewData["especialidades"] = array_merge(
             [[
                 "id" => 0,
@@ -177,7 +181,9 @@ class MedicosController extends PublicController
             exit;
         }
 
-        $assignments = DaoMedicoCentroSalud::getActivosByMedico($id);
+        $currentAssignments =
+            DaoMedicoCentroSalud::getActivosByMedico($id);
+        $assignments = $currentAssignments;
 
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $medico = array_merge($medico, $this->readDoctorData());
@@ -197,6 +203,29 @@ class MedicosController extends PublicController
             if ($error === null) {
                 $error = $assignmentResult["error"];
             }
+            if ($error === null) {
+                $error =
+                    $this->validateFutureAppointmentAssignmentRemovals(
+                        $id,
+                        $currentAssignments,
+                        $assignments
+                    );
+
+                if ($error !== null) {
+                    AuditLogger::log(
+                        "bloqueado",
+                        "Médicos",
+                        "Cambio de asignación bloqueado por citas futuras: "
+                            . $medico["nombres"]
+                            . " "
+                            . $medico["apellidos"],
+                        [
+                            "medico_id" => $id,
+                            "motivo" => $error
+                        ]
+                    );
+                }
+            }
 
             if ($error !== null) {
                 $this->renderEdit($medico, $assignments, $error);
@@ -204,6 +233,7 @@ class MedicosController extends PublicController
             }
 
             try {
+                $consultorioMoves = [];
                 DaoMedicos::updateMedicoConCentros(
                     $id,
                     $medico["especialidad_id"],
@@ -211,8 +241,16 @@ class MedicosController extends PublicController
                     $medico["apellidos"],
                     $medico["num_colegiatura"],
                     $medico["telefono"],
-                    $assignments
+                    $assignments,
+                    $consultorioMoves
                 );
+
+                $notificationSummary =
+                    $this->notifyConsultorioMoves($consultorioMoves);
+                if ($notificationSummary !== null) {
+                    $_SESSION["medicos_consultorio_notice"] =
+                        $notificationSummary;
+                }
 
                 AuditLogger::log(
                     "editar",
@@ -220,7 +258,9 @@ class MedicosController extends PublicController
                     "Médico actualizado: " . $medico["nombres"] . " " . $medico["apellidos"],
                     [
                         "medico_id" => $id,
-                        "centro_salud_ids" => array_column($assignments, "centro_salud_id")
+                        "centro_salud_ids" => array_column($assignments, "centro_salud_id"),
+                        "citas_consultorio_actualizadas" =>
+                            count($consultorioMoves)
                     ]
                 );
             } catch (\Throwable $error) {
@@ -316,6 +356,134 @@ class MedicosController extends PublicController
         }
         if (DaoMedicos::existsNumColegiatura($data["num_colegiatura"], $excludeId)) {
             return "Ya existe un médico con ese número de colegiatura.";
+        }
+
+        return null;
+    }
+
+    /**
+     * Envía las notificaciones después de confirmar el cambio en la base.
+     *
+     * Una falla externa no revierte el consultorio ya guardado. Cada resultado
+     * queda auditado y el resumen se muestra al administrador en el listado.
+     */
+    private function notifyConsultorioMoves(array $appointments): ?string
+    {
+        if (count($appointments) === 0) {
+            return null;
+        }
+
+        $sent = 0;
+        $failed = 0;
+        foreach ($appointments as $appointment) {
+            try {
+                $wasSent =
+                    MessageNotifier::sendAppointmentRoomChanged($appointment);
+            } catch (\Throwable $error) {
+                error_log(
+                    "No se pudo notificar el cambio de consultorio de la cita "
+                    . intval($appointment["id"] ?? 0)
+                    . ": "
+                    . $error->getMessage()
+                );
+                $wasSent = false;
+            }
+
+            $wasSent ? $sent++ : $failed++;
+            AuditLogger::log(
+                $wasSent
+                    ? "notificar-cambio-consultorio"
+                    : "notificacion-consultorio-fallida",
+                "Citas",
+                $wasSent
+                    ? "Paciente notificado por cambio de consultorio"
+                    : "No se pudo notificar el cambio de consultorio",
+                [
+                    "cita_id" => intval($appointment["id"] ?? 0),
+                    "paciente_id" =>
+                        intval($appointment["paciente_id"] ?? 0),
+                    "medico_id" =>
+                        intval($appointment["medico_id"] ?? 0),
+                    "centro_salud_id" =>
+                        intval($appointment["centro_salud_id"] ?? 0),
+                    "consultorio_anterior" =>
+                        strval($appointment["consultorio_anterior"] ?? ""),
+                    "consultorio_nuevo" =>
+                        strval($appointment["consultorio"] ?? "")
+                ]
+            );
+        }
+
+        $total = count($appointments);
+        return "Consultorio actualizado en "
+            . $total
+            . ($total === 1 ? " cita futura." : " citas futuras.")
+            . " Notificaciones enviadas: "
+            . $sent
+            . ". No enviadas: "
+            . $failed
+            . ".";
+    }
+
+    /**
+     * Impide retirar una asignación usada por citas futuras.
+     *
+     * Cambiar únicamente el consultorio está permitido aunque existan citas
+     * futuras. La relación médico-centro sí debe permanecer activa hasta que
+     * esas citas sean reasignadas, canceladas o finalizadas.
+     */
+    private function validateFutureAppointmentAssignmentRemovals(
+        int $medicoId,
+        array $currentAssignments,
+        array $requestedAssignments
+    ): ?string {
+        $requestedCenterIds = [];
+        foreach ($requestedAssignments as $assignment) {
+            $requestedCenterIds[(int) $assignment["centro_salud_id"]] = true;
+        }
+
+        foreach ($currentAssignments as $currentAssignment) {
+            $centerId = (int) $currentAssignment["centro_salud_id"];
+            $assignmentRemoved =
+                !array_key_exists($centerId, $requestedCenterIds);
+
+            if (!$assignmentRemoved) {
+                continue;
+            }
+
+            $appointmentSummary =
+                DaoMedicoCentroSalud::getFutureActiveAppointmentSummary(
+                    $medicoId,
+                    $centerId
+                );
+            $futureAppointments =
+                (int) ($appointmentSummary["total"] ?? 0);
+
+            if ($futureAppointments === 0) {
+                continue;
+            }
+
+            $nextAppointment = strval(
+                $appointmentSummary["proxima_fecha"] ?? ""
+            );
+            $nextAppointmentText = $nextAppointment !== ""
+                ? date("d/m/Y H:i", strtotime($nextAppointment))
+                : "fecha no disponible";
+            $centerName = strval(
+                $currentAssignment["centro_nombre"]
+                    ?? "el centro seleccionado"
+            );
+            return "No se puede retirar la asignación de "
+                . $centerName
+                . ": el médico tiene "
+                . $futureAppointments
+                . ($futureAppointments === 1
+                    ? " cita futura activa"
+                    : " citas futuras activas")
+                . " en ese centro. La próxima está programada para "
+                . $nextAppointmentText
+                . ". Reasigne o cancele estas citas antes de modificar "
+                . "la asignación.";
         }
 
         return null;

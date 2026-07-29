@@ -59,6 +59,31 @@ class MedicoCentroSalud extends Table
     }
 
     /**
+     * Bloquea las asignaciones activas mientras se propaga un cambio de sala.
+     *
+     * Esta variante se usa dentro de la transacción de edición del médico para
+     * que la comparación de consultorios y la actualización de citas futuras
+     * no compitan con otra edición simultánea.
+     */
+    public static function getActivosByMedicoForUpdate(
+        int $medicoId,
+        &$conn
+    ): array {
+        $sql = "SELECT medico_id, centro_salud_id, consultorio
+                FROM medico_centro_salud
+                WHERE medico_id = :medico_id
+                  AND estado = 'ACT'
+                ORDER BY centro_salud_id ASC
+                FOR UPDATE";
+
+        return parent::obtenerRegistros(
+            $sql,
+            ["medico_id" => $medicoId],
+            $conn
+        );
+    }
+
+    /**
      * Resuelve una asignación activa específica de médico y centro.
      *
      * Esta comprobación es la validación autoritativa antes de insertar o
@@ -127,11 +152,46 @@ class MedicoCentroSalud extends Table
     }
 
     /**
+     * Resume citas futuras activas de una asignación médico-centro.
+     *
+     * Se consulta antes de retirar una ubicación del médico. Los estados 3,
+     * 4 y 5 son terminales y no bloquean el retiro porque esas citas ya no
+     * requieren una atención futura. Cambiar solo el consultorio está
+     * permitido y no utiliza esta protección.
+     *
+     * @return array{total:int|string, proxima_fecha:?string}
+     */
+    public static function getFutureActiveAppointmentSummary(
+        int $medicoId,
+        int $centroSaludId
+    ): array {
+        $sql = "SELECT COUNT(*) AS total,
+                       MIN(fecha_hora) AS proxima_fecha
+                FROM cita
+                WHERE medico_id = :medico_id
+                  AND centro_salud_id = :centro_salud_id
+                  AND fecha_hora >= CURRENT_TIMESTAMP
+                  AND estado_id NOT IN (3, 4, 5)";
+
+        $row = parent::obtenerUnRegistro($sql, [
+            "medico_id" => $medicoId,
+            "centro_salud_id" => $centroSaludId
+        ]);
+
+        return is_array($row)
+            ? $row
+            : ["total" => 0, "proxima_fecha" => null];
+    }
+
+    /**
      * Reemplaza el conjunto activo de centros asignados a un médico.
      *
      * Primero inactiva las relaciones actuales y después reactiva o inserta
-     * las seleccionadas. El índice único (medico_id, centro_salud_id) permite
-     * utilizar ON DUPLICATE KEY UPDATE sin generar duplicados.
+     * las seleccionadas. El controlador debe validar previamente que ninguna
+     * relación retirada tenga citas futuras activas. El consultorio sí puede
+     * cambiar sin retirar la relación médico-centro.
+     * El índice único (medico_id, centro_salud_id) permite utilizar
+     * ON DUPLICATE KEY UPDATE sin generar duplicados.
      *
      * La conexión opcional permite que Dao\Medicos controle una transacción
      * que incluya tanto los datos del médico como sus centros. Si no se recibe

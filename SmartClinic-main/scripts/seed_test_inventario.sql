@@ -57,8 +57,7 @@ VALUES
 -- --- Ajustes manuales (entradas/salidas) escalonados en el tiempo -----------
 -- IMPORTANTE: en este proyecto centro_salud_id en ajuste_inventario es
 -- NOT NULL (migración aplicada por el equipo), así que TODOS los ajustes
--- manuales necesitan un centro válido. Solo las compras (factura_compra)
--- se consideran "Inventario general" (esas sí quedan con centro NULL).
+-- manuales y todas las compras necesitan un centro válido.
 -- Si @centro_test sale NULL es porque no hay ningún centro_salud creado
 -- todavía (poco probable: el propio esquema base ya inserta uno con
 -- INSERT IGNORE). Si eso pasara, los INSERT de abajo fallarían con
@@ -94,14 +93,34 @@ VALUES
 
 -- --- Una compra real (para probar que el Kárdex también cuenta entradas ----
 -- por compra, no solo ajustes manuales) -------------------------------------
-INSERT INTO factura_compra (proveedor_id, numero_factura, fecha_compra, total, usuario_id)
+INSERT INTO factura_compra
+    (
+        proveedor_id,
+        centro_salud_id,
+        numero_factura,
+        fecha_compra,
+        total,
+        usuario_id
+    )
 VALUES (
     (SELECT id FROM proveedor WHERE nombre = '[TEST] Farmacéutica del Valle'),
+    @centro_test,
     'TEST-0001',
     NOW() - INTERVAL 4 DAY,
     8500.00,
     NULL
 );
+
+-- El saldo operativo se guarda por centro. `producto.stock_actual` conserva
+-- el total agregado y los valores de este seed ya fueron calculados para
+-- coincidir con la suma de los movimientos insertados arriba.
+INSERT INTO inventario_centro
+    (producto_id, centro_salud_id, stock_actual)
+SELECT p.id, @centro_test, p.stock_actual
+FROM producto p
+WHERE p.nombre LIKE '[TEST] %'
+ON DUPLICATE KEY UPDATE
+    stock_actual = VALUES(stock_actual);
 
 INSERT INTO factura_compra_detalle (factura_compra_id, producto_id, cantidad, precio_unitario, tipo_compra, cantidad_cajas, subtotal)
 VALUES (

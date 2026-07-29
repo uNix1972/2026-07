@@ -13,6 +13,7 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
       <div><strong>N° Factura:</strong> {{numero_factura}}</div>
       <div><strong>Proveedor:</strong> {{proveedor_nombre}}</div>
+      <div><strong>Centro de salud:</strong> {{centro_nombre}}</div>
       <div><strong>Fecha:</strong> {{fecha_compra}}</div>
       <div><strong>Total:</strong> {{total}}</div>
     </div>

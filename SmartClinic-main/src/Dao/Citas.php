@@ -6,9 +6,8 @@ namespace Dao;
  * Acceso a datos de citas y sus reglas de ocupación de agenda.
  *
  * Cada cita pertenece a un paciente, un médico y uno de los centros activos
- * asignados a ese médico. Las consultas enriquecen las filas con nombres,
- * especialidad, estado, centro y consultorio para que los controladores no
- * tengan que ejecutar SQL ni reconstruir la ubicación.
+ * asignados a ese médico. `cita.consultorio` conserva la ubicación histórica
+ * elegida al agendarla; no se reconstruye desde la asignación actual.
  */
 class Citas extends Table
 {
@@ -25,18 +24,22 @@ class Citas extends Table
         int $pacienteId,
         int $medicoId,
         int $centroSaludId,
+        string $consultorio,
         int $estadoId,
         string $fechaHora
     ): int {
         $sql = "INSERT INTO cita
-                    (paciente_id, medico_id, centro_salud_id, estado_id, fecha_hora)
+                    (paciente_id, medico_id, centro_salud_id, consultorio,
+                     estado_id, fecha_hora)
                 VALUES
-                    (:paciente_id, :medico_id, :centro_salud_id, :estado_id, :fecha_hora)";
+                    (:paciente_id, :medico_id, :centro_salud_id, :consultorio,
+                     :estado_id, :fecha_hora)";
 
         parent::executeNonQuery($sql, [
             "paciente_id" => $pacienteId,
             "medico_id" => $medicoId,
             "centro_salud_id" => $centroSaludId,
+            "consultorio" => trim($consultorio),
             "estado_id" => $estadoId,
             "fecha_hora" => $fechaHora
         ]);
@@ -47,8 +50,8 @@ class Citas extends Table
     /**
      * Obtiene una cita por ID con todos sus datos descriptivos.
      *
-     * El LEFT JOIN con la relación médico-centro conserva la ubicación
-     * histórica incluso si la asignación fue marcada como inactiva después.
+     * El consultorio procede de la propia cita, por lo que permanece estable
+     * aunque la asignación del médico cambie posteriormente.
      */
     public static function getCitaById(int $id): ?array
     {
@@ -65,7 +68,7 @@ class Citas extends Table
                        cs.tipo AS centro_tipo,
                        cs.direccion AS centro_direccion,
                        cs.ciudad AS centro_ciudad,
-                       mcs.consultorio
+                       c.consultorio
                 FROM cita c
                 LEFT JOIN paciente p ON c.paciente_id = p.id
                 LEFT JOIN medico m ON c.medico_id = m.id
@@ -95,7 +98,7 @@ class Citas extends Table
                        cs.nombre AS centro_nombre,
                        cs.direccion AS centro_direccion,
                        cs.ciudad AS centro_ciudad,
-                       mcs.consultorio
+                       c.consultorio
                 FROM cita c
                 LEFT JOIN medico m ON c.medico_id = m.id
                 LEFT JOIN especialidad e ON m.especialidad_id = e.id
@@ -124,7 +127,7 @@ class Citas extends Table
                        cs.nombre AS centro_nombre,
                        cs.direccion AS centro_direccion,
                        cs.ciudad AS centro_ciudad,
-                       mcs.consultorio
+                       c.consultorio
                 FROM cita c
                 LEFT JOIN paciente p ON c.paciente_id = p.id
                 LEFT JOIN estado_cita ec ON c.estado_id = ec.id
@@ -156,7 +159,7 @@ class Citas extends Table
                        cs.tipo AS centro_tipo,
                        cs.direccion AS centro_direccion,
                        cs.ciudad AS centro_ciudad,
-                       mcs.consultorio
+                       c.consultorio
                 FROM cita c
                 LEFT JOIN paciente p ON c.paciente_id = p.id
                 LEFT JOIN medico m ON c.medico_id = m.id
@@ -195,7 +198,7 @@ class Citas extends Table
                        m.nombres AS medico_nombres,
                        m.apellidos AS medico_apellidos,
                        cs.nombre AS centro_nombre,
-                       mcs.consultorio
+                       c.consultorio
                 FROM cita c
                 LEFT JOIN paciente p ON p.id = c.paciente_id
                 LEFT JOIN medico m ON m.id = c.medico_id
@@ -335,6 +338,7 @@ class Citas extends Table
         int $pacienteId,
         int $medicoId,
         int $centroSaludId,
+        string $consultorio,
         int $estadoId,
         string $fechaHora
     ): void {
@@ -342,6 +346,7 @@ class Citas extends Table
                 SET paciente_id = :paciente_id,
                     medico_id = :medico_id,
                     centro_salud_id = :centro_salud_id,
+                    consultorio = :consultorio,
                     estado_id = :estado_id,
                     fecha_hora = :fecha_hora
                 WHERE id = :id";
@@ -351,9 +356,75 @@ class Citas extends Table
             "paciente_id" => $pacienteId,
             "medico_id" => $medicoId,
             "centro_salud_id" => $centroSaludId,
+            "consultorio" => trim($consultorio),
             "estado_id" => $estadoId,
             "fecha_hora" => $fechaHora
         ]);
+    }
+
+    /**
+     * Mueve al nuevo consultorio únicamente las citas futuras no terminales.
+     *
+     * Las filas se bloquean y actualizan dentro de la transacción que modifica
+     * la asignación médico-centro. El resultado conserva el consultorio
+     * anterior y contiene los datos necesarios para notificar después del
+     * commit, sin mantener abierta la transacción durante llamadas externas.
+     */
+    public static function moveFutureActiveAppointmentsToConsultorio(
+        int $medicoId,
+        int $centroSaludId,
+        string $newConsultorio,
+        &$conn
+    ): array {
+        $sql = "SELECT c.*,
+                       c.consultorio AS consultorio_anterior,
+                       p.nombres AS paciente_nombres,
+                       p.apellidos AS paciente_apellidos,
+                       p.telefono AS paciente_telefono,
+                       m.nombres AS medico_nombres,
+                       m.apellidos AS medico_apellidos,
+                       cs.nombre AS centro_nombre
+                FROM cita c
+                JOIN paciente p ON p.id = c.paciente_id
+                JOIN medico m ON m.id = c.medico_id
+                JOIN centro_salud cs ON cs.id = c.centro_salud_id
+                WHERE c.medico_id = :medico_id
+                  AND c.centro_salud_id = :centro_salud_id
+                  AND c.fecha_hora >= CURRENT_TIMESTAMP
+                  AND c.estado_id NOT IN (3, 4, 5)
+                ORDER BY c.fecha_hora ASC, c.id ASC
+                FOR UPDATE";
+        $params = [
+            "medico_id" => $medicoId,
+            "centro_salud_id" => $centroSaludId
+        ];
+        $appointments = parent::obtenerRegistros($sql, $params, $conn);
+
+        if (count($appointments) === 0) {
+            return [];
+        }
+
+        parent::executeNonQuery(
+            "UPDATE cita
+             SET consultorio = :consultorio
+             WHERE medico_id = :medico_id
+               AND centro_salud_id = :centro_salud_id
+               AND fecha_hora >= CURRENT_TIMESTAMP
+               AND estado_id NOT IN (3, 4, 5)",
+            [
+                "consultorio" => trim($newConsultorio),
+                "medico_id" => $medicoId,
+                "centro_salud_id" => $centroSaludId
+            ],
+            $conn
+        );
+
+        foreach ($appointments as &$appointment) {
+            $appointment["consultorio"] = trim($newConsultorio);
+        }
+        unset($appointment);
+
+        return $appointments;
     }
 
     /**

@@ -12,6 +12,22 @@ function check(bool $condition, string $message): void
 }
 
 $_SERVER['REQUEST_URI'] = '/index.php';
+$_SERVER['SCRIPT_NAME'] = '/index.php';
+\Utilities\Site::configure();
+
+check(
+    \Utilities\Context::getContextByKey('BASE_DIR') === '',
+    'ruta base vacia funciona cuando la aplicacion esta en la raiz'
+);
+$_SERVER['SCRIPT_NAME'] =
+    '/SmartClinic_Final/SmartClinic-main/index.php';
+\Utilities\Site::configure();
+check(
+    \Utilities\Context::getContextByKey('BASE_DIR')
+        === '/SmartClinic_Final/SmartClinic-main',
+    'ruta base se detecta cuando la aplicacion esta en una subcarpeta'
+);
+$_SERVER['SCRIPT_NAME'] = '/index.php';
 \Utilities\Site::configure();
 
 check(\Utilities\Validators::IsValidEmail('recepcion@smartclinic.com'), 'email válido');
@@ -72,7 +88,156 @@ check(is_file(__DIR__ . '/../src/Controllers/NotificacionesController.php'), 'no
 check(is_file(__DIR__ . '/../src/Controllers/PasswordRecoveryController.php'), 'recuperación de contraseña presente');
 check(is_file(__DIR__ . '/../src/Controllers/BIController.php'), 'módulo BI presente');
 check(is_file(__DIR__ . '/../src/Dao/ClinicaAvanzada.php'), 'DAO clínico avanzado presente');
+$biController = file_get_contents(
+    __DIR__ . '/../src/Controllers/BIController.php'
+);
+$advancedClinicDao = file_get_contents(
+    __DIR__ . '/../src/Dao/ClinicaAvanzada.php'
+);
+$biView = file_get_contents(
+    __DIR__ . '/../src/Views/templates/bi_dashboard.view.tpl'
+);
+$biCss = file_get_contents(__DIR__ . '/../public/css/main.css');
+check(
+    strpos($biController, "Validators::sanitizeId") !== false
+        && strpos($biController, "DaoCentroSalud::getAll") !== false
+        && strpos($biController, "getMetricasBI(\$centroSaludId)")
+            !== false,
+    'controlador BI exige un centro de salud valido'
+);
+check(
+    strpos(
+        $advancedClinicDao,
+        'getMetricasBI(int $centroSaludId)'
+    ) !== false
+        && substr_count(
+            $advancedClinicDao,
+            'c.centro_salud_id = :'
+        ) >= 3,
+    'metricas BI filtran citas e ingresos por centro'
+);
+check(
+    strpos($advancedClinicDao, 'getResumenBI(int $centroSaludId)')
+        !== false
+        && strpos(
+            $advancedClinicDao,
+            'INNER JOIN cita c ON c.id = pf.cita_id'
+        ) !== false,
+    'resumen e ingresos BI se vinculan al centro de cada cita'
+);
+check(
+    strpos($advancedClinicDao, 'AS citas_mes_actual') !== false
+        && strpos($advancedClinicDao, 'AS ingresos_mes_actual') !== false
+        && strpos($biController, "'citasMesActual'") !== false
+        && strpos($biController, "'ingresosMesActual'") !== false,
+    'resumen BI calcula citas e ingresos del mes por centro'
+);
+check(
+    strpos($biView, 'Citas del mes') !== false
+        && strpos($biView, '{{citasMesActual}}') !== false
+        && strpos($biView, 'Ingresos del mes') !== false
+        && strpos($biView, '{{ingresosMesActual}}') !== false,
+    'tablero BI muestra los dos indicadores mensuales'
+);
+check(
+    strpos($biView, 'name="centro_salud_id"') !== false
+        && strpos($biView, '{{foreach centros}}') !== false
+        && strpos($biView, 'Todos los centros') === false,
+    'tablero BI obliga a seleccionar un unico centro'
+);
+check(
+    strpos($biCss, '.bi-center-filter') !== false
+        && strpos($biCss, '.bi-summary-grid') !== false
+        && strpos($biCss, '.bi-bar__track') !== false,
+    'tablero BI tiene estilos de selector, resumen y graficas'
+);
+check(
+    strpos($biController, 'addPieMetadata(') !== false
+        && strpos($biController, "'piePercentage'") !== false
+        && strpos($biController, "'pieOffset'") !== false,
+    'controlador BI prepara porcentajes y segmentos de pastel'
+);
+check(
+    substr_count($biView, 'class="bi-pie"') === 2
+        && strpos(
+            $biView,
+            'Distribución porcentual de citas por estado'
+        ) !== false
+        && strpos(
+            $biView,
+            'Distribución porcentual de citas por médico'
+        ) !== false
+        && strpos($biCss, '.bi-pie__segment') !== false,
+    'tablero BI muestra graficas de pastel accesibles'
+);
 $sql = file_get_contents(__DIR__ . '/../docs/smartclinic_1p.sql');
+$seedCenterCodes = ['SC-NORTE', 'SC-CENTRAL', 'SC-LITORAL'];
+$seedProviders = [
+    'MediSupply Honduras',
+    'Distribuidora Farmaceutica Central',
+    'Insumos Clinicos del Norte',
+    'Laboratorios VitalCare',
+    'Equipo Medico Hondureno',
+];
+$seedProducts = [
+    'Guantes de nitrilo',
+    'Mascarilla quirurgica',
+    'Jeringa desechable 5 ml',
+    'Alcohol etilico 70% 1 L',
+    'Gasa esteril 10 x 10 cm',
+    'Venda elastica 10 cm',
+    'Solucion salina 500 ml',
+    'Termometro digital',
+    'Tensiometro aneroide',
+    'Oximetro de pulso',
+    'Bajalenguas de madera',
+    'Algodon absorbente 500 g',
+    'Cateter intravenoso 22G',
+    'Tubo de muestra tapa roja',
+    'Curita adhesiva',
+    'Desinfectante de superficies 1 L',
+    'Papel para camilla 50 m',
+    'Bata desechable',
+    'Gorro quirurgico',
+    'Gel antibacterial 500 ml',
+];
+foreach ($seedCenterCodes as $centerCode) {
+    check(
+        strpos($sql, "'{$centerCode}'") !== false,
+        "centro de demostracion {$centerCode} documentado"
+    );
+}
+foreach ($seedProviders as $providerName) {
+    check(
+        strpos($sql, "'{$providerName}'") !== false,
+        "proveedor de demostracion {$providerName} documentado"
+    );
+}
+check(
+    count(array_filter(
+        $seedProducts,
+        static fn ($productName) =>
+            strpos($sql, "'{$productName}'") !== false
+    )) === 20,
+    'veinte productos de demostracion documentados'
+);
+$purchaseCreateTemplate = file_get_contents(
+    __DIR__ . '/../src/Views/templates/compra_create.view.tpl'
+);
+$purchaseEditTemplate = file_get_contents(
+    __DIR__ . '/../src/Views/templates/compra_edit.view.tpl'
+);
+$mainCss = file_get_contents(__DIR__ . '/../public/css/main.css');
+check(
+    strpos($purchaseCreateTemplate, 'purchase-lines-editor') !== false
+        && strpos($purchaseEditTemplate, 'purchase-lines-editor') !== false,
+    'editor visual de productos compartido por alta y edicion de compras'
+);
+check(
+    strpos($mainCss, '.purchase-linea') !== false
+        && strpos($mainCss, '.btn-remove-linea') !== false,
+    'estilos responsivos del detalle de compra presentes'
+);
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS historial_medico') !== false, 'tabla historial médico documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS receta_medica') !== false, 'tabla recetas documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS signos_vitales') !== false, 'tabla signos vitales documentada');
@@ -136,6 +301,37 @@ check(strpos($sql, "Controllers\\\\CentrosSaludController") !== false, 'permiso 
 check(is_file(__DIR__ . '/../src/Dao/CentroSalud.php'), 'DAO comentado de centros de salud presente');
 check(is_file(__DIR__ . '/../src/Controllers/CentrosSaludController.php'), 'controlador de centros de salud presente');
 check(is_file(__DIR__ . '/../src/Views/templates/centros_salud.view.tpl'), 'vista del catálogo de centros de salud presente');
+$centerDao = file_get_contents(__DIR__ . '/../src/Dao/CentroSalud.php');
+$centerController = file_get_contents(
+    __DIR__ . '/../src/Controllers/CentrosSaludController.php'
+);
+$centerView = file_get_contents(
+    __DIR__ . '/../src/Views/templates/centros_salud.view.tpl'
+);
+check(
+    strpos($centerDao, 'getFutureActiveAppointmentSummary') !== false
+        && strpos($centerDao, 'fecha_hora >= CURRENT_TIMESTAMP') !== false
+        && strpos($centerDao, 'estado_id NOT IN (3, 4, 5)') !== false,
+    'DAO protege centros con citas futuras activas'
+);
+check(
+    strpos($centerController, 'citas futuras activas') !== false
+        && strpos($centerController, 'DaoCentroSalud::setStatus')
+            > strpos(
+                $centerController,
+                'DaoCentroSalud::getFutureActiveAppointmentSummary'
+            ),
+    'desactivacion de centro valida citas antes de cambiar estado'
+);
+check(
+    strpos($centerView, '{{if statusError}}') !== false,
+    'catalogo de centros muestra bloqueo por citas futuras'
+);
+check(
+    strpos($centerView, 'form="center-status-{{id}}"') !== false
+        && strpos($centerView, 'id="center-status-{{id}}"') !== false,
+    'acciones de estado usan formularios POST externos a la tabla'
+);
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS medico_centro_salud') !== false, 'relación médico-centro documentada');
 check(strpos($sql, "'SmartClinic Center'") !== false, 'centro de salud predeterminado documentado');
 check(strpos($sql, "LPAD(m.id, 2, '0')") !== false, 'consultorios iniciales únicos por médico documentados');
@@ -150,10 +346,41 @@ check(strpos($sql, 'fk_ajuste_inventario_centro_salud') !== false, 'integridad c
 check(is_file(__DIR__ . '/../src/Dao/MedicoCentroSalud.php'), 'DAO comentado de relación médico-centro presente');
 $medicoCentroDao = file_get_contents(__DIR__ . '/../src/Dao/MedicoCentroSalud.php');
 check(strpos($medicoCentroDao, 'findActiveConsultorioConflict') !== false, 'DAO valida consultorio activo único por centro');
+check(
+    strpos($medicoCentroDao, 'getFutureActiveAppointmentSummary') !== false
+        && strpos($medicoCentroDao, 'estado_id NOT IN (3, 4, 5)')
+            !== false,
+    'DAO protege asignaciones medico-centro con citas futuras'
+);
 
 $medicosDao = file_get_contents(__DIR__ . '/../src/Dao/Medicos.php');
 check(strpos($medicosDao, 'insertMedicoConCentros') !== false, 'alta transaccional de médico y centros presente');
 check(strpos($medicosDao, 'updateMedicoConCentros') !== false, 'edición transaccional de médico y centros presente');
+check(
+    strpos($medicosDao, 'moveFutureActiveAppointmentsToConsultorio')
+        !== false
+        && strpos($medicosDao, 'getActivosByMedicoForUpdate') !== false,
+    'cambio de consultorio mueve citas futuras dentro de la transaccion'
+);
+$medicosController = file_get_contents(
+    __DIR__ . '/../src/Controllers/MedicosController.php'
+);
+check(
+    strpos(
+        $medicosController,
+        'validateFutureAppointmentAssignmentRemovals'
+    ) !== false
+        && strpos($medicosController, 'Reasigne o cancele estas citas')
+            !== false
+        && strpos($medicosController, '$roomChanged') === false
+        && strpos($medicosController, 'cambiar el consultorio de') === false,
+    'edicion medica bloquea retiros pero permite cambiar consultorio'
+);
+check(
+    strpos($medicosController, 'notifyConsultorioMoves') !== false
+        && strpos($medicosController, 'medicos_consultorio_notice') !== false,
+    'edicion medica notifica y resume movimientos de consultorio'
+);
 
 $medicoCreate = file_get_contents(__DIR__ . '/../src/Views/templates/medico_create.view.tpl');
 $medicoEdit = file_get_contents(__DIR__ . '/../src/Views/templates/medico_edit.view.tpl');
@@ -167,12 +394,38 @@ $pacientePortal = file_get_contents(__DIR__ . '/../src/Views/templates/paciente_
 $messageNotifier = file_get_contents(__DIR__ . '/../src/Utilities/MessageNotifier.php');
 check(strpos($citasDao, 'centro_salud_id') !== false, 'DAO de citas persiste el centro de salud');
 check(strpos($citasDao, 'centro_nombre') !== false, 'DAO de citas devuelve la ubicación');
+check(
+    strpos($sql, 'cita_consultorio_column_exists') !== false
+        && strpos($sql, 'MODIFY COLUMN consultorio VARCHAR(30) NOT NULL')
+            !== false,
+    'migracion preserva consultorio historico de citas'
+);
+check(
+    strpos($citasDao, '(paciente_id, medico_id, centro_salud_id, consultorio,')
+        !== false
+        && strpos($citasDao, 'c.consultorio') !== false
+        && strpos($citasDao, 'mcs.consultorio') === false,
+    'DAO de citas persiste y consulta su propio consultorio'
+);
+check(
+    strpos($citasDao, 'moveFutureActiveAppointmentsToConsultorio')
+        !== false
+        && strpos($citasDao, 'estado_id NOT IN (3, 4, 5)') !== false
+        && strpos($citasDao, 'FOR UPDATE') !== false,
+    'DAO mueve solo citas futuras activas al nuevo consultorio'
+);
 check(strpos($citasController, 'availableCenters') !== false, 'citas expone centros activos por médico');
 check(strpos($citasController, 'getActivoByMedicoCentro') !== false, 'citas valida la asignación médico-centro');
 check(strpos($citaCreate, 'name="centro_salud_id"') !== false, 'alta de cita solicita centro de salud');
 check(strpos($citaEdit, 'name="centro_salud_id"') !== false, 'edición de cita solicita centro de salud');
 check(strpos($pacientePortal, 'name="centro_salud_id"') !== false, 'portal del paciente solicita centro de salud');
 check(strpos($messageNotifier, 'Centro de salud: %s') !== false, 'mensaje de cita incluye centro de salud');
+check(
+    strpos($messageNotifier, 'sendAppointmentRoomChanged') !== false
+        && strpos($messageNotifier, 'Consultorio anterior: %s') !== false
+        && strpos($messageNotifier, 'Nuevo consultorio: %s') !== false,
+    'notificacion de movimiento incluye consultorio anterior y nuevo'
+);
 check(strpos($citasDao, 'paciente_telefono') !== false, 'DAO de citas devuelve teléfono del paciente');
 check(strpos($citasController, "case 'notify':") !== false, 'citas expone notificación manual');
 check(strpos($citasController, "\$_POST['notify_patient']") !== false, 'alta de cita respeta notificación inmediata opcional');
@@ -193,19 +446,37 @@ check(strpos($pacientePortal, '<select id="hora"') !== false, 'portal del pacien
 
 $inventoryController = file_get_contents(__DIR__ . '/../src/Controllers/InventarioController.php');
 $adjustmentDao = file_get_contents(__DIR__ . '/../src/Dao/AjusteInventario.php');
+$centerInventoryDao = file_get_contents(__DIR__ . '/../src/Dao/InventarioCentro.php');
 $movementDao = file_get_contents(__DIR__ . '/../src/Dao/MovimientoInventario.php');
+$purchaseDao = file_get_contents(__DIR__ . '/../src/Dao/FacturaCompra.php');
+$purchaseController = file_get_contents(__DIR__ . '/../src/Controllers/ComprasController.php');
 $adjustmentView = file_get_contents(__DIR__ . '/../src/Views/templates/inventario_ajustar.view.tpl');
 $inventoryView = file_get_contents(__DIR__ . '/../src/Views/templates/inventario.view.tpl');
 $kardexView = file_get_contents(__DIR__ . '/../src/Views/templates/inventario_kardex.view.tpl');
+$purchaseCreateView = file_get_contents(__DIR__ . '/../src/Views/templates/compra_create.view.tpl');
+$purchaseEditView = file_get_contents(__DIR__ . '/../src/Views/templates/compra_edit.view.tpl');
 check(strpos($inventoryController, 'DaoCentroSalud::getActivos') !== false, 'ajustes cargan centros de salud activos');
 check(strpos($inventoryController, 'registerWithStockChange') !== false, 'ajuste y stock se registran atómicamente');
-check(strpos($adjustmentDao, 'SELECT id, stock_actual') !== false, 'DAO de ajustes bloquea el producto antes de modificar stock');
+check(strpos($sql, '-- cambios para separar el inventario por centro de salud') !== false, 'migración de inventario por centro documentada');
+check(strpos($sql, 'CREATE TABLE IF NOT EXISTS inventario_centro') !== false, 'tabla de saldos por centro documentada');
+check(strpos($sql, 'fk_factura_compra_centro_salud') !== false, 'compras exigen centro de salud');
+check(strpos($sql, '[MIGRACION_CENTRO] Saldo inicial conciliado') !== false, 'saldo legado queda conciliado en el kárdex');
+check(is_file(__DIR__ . '/../src/Dao/InventarioCentro.php'), 'DAO comentado de inventario por centro presente');
+check(strpos($centerInventoryDao, 'FOR UPDATE') !== false, 'DAO bloquea el saldo por centro antes de modificarlo');
+check(strpos($centerInventoryDao, 'nuevoSaldo < 0') !== false, 'DAO impide stock negativo por centro');
+check(strpos($adjustmentDao, 'InventarioCentro::ajustarStock') !== false, 'ajustes modifican el saldo autoritativo del centro');
 check(strpos($adjustmentDao, 'centro_salud_id') !== false, 'DAO de ajustes persiste el centro de salud');
 check(strpos($movementDao, 'cs.nombre') !== false, 'movimientos devuelven el centro del ajuste');
-check(strpos($movementDao, "'Inventario general'") !== false, 'compras globales tienen ubicación descriptiva');
+check(strpos($movementDao, 'fc.centro_salud_id') !== false, 'movimientos de compra conservan su centro');
+check(strpos($movementDao, "'Inventario general'") === false, 'ya no existen compras de inventario general');
+check(strpos($purchaseDao, 'InventarioCentro::ajustarStock') !== false, 'compras actualizan el saldo por centro');
+check(strpos($purchaseController, 'centro_salud_id') !== false, 'controlador de compras valida centro de destino');
 check(strpos($adjustmentView, 'name="centro_salud_id"') !== false, 'formulario de ajuste exige centro de salud');
+check(strpos($inventoryView, 'id="centro_inventario"') !== false, 'inventario se consulta por centro de salud');
 check(strpos($inventoryView, '{{centro_nombre}}') !== false, 'movimientos recientes muestran centro de salud');
 check(strpos($kardexView, '{{centro_nombre}}') !== false, 'kárdex muestra centro de salud');
+check(strpos($purchaseCreateView, 'name="centro_salud_id"') !== false, 'alta de compra exige centro de destino');
+check(strpos($purchaseEditView, 'name="centro_salud_id"') !== false, 'edición de compra exige centro de destino');
 
 $navConfig = file_get_contents(__DIR__ . '/../nav.config.json');
 check(strpos($navConfig, 'ReportesController') !== false, 'menú de reportes registrado');

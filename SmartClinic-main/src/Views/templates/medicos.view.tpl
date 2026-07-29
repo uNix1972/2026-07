@@ -12,6 +12,12 @@
         {{endif showCrudActions}}
     </div>
 
+    {{if consultorioNotice}}
+    <div role="status" style="margin-bottom:16px;padding:14px 16px;border:1px solid #93C5FD;border-radius:10px;background:#EFF6FF;color:#1E3A8A;">
+        {{consultorioNotice}}
+    </div>
+    {{endif consultorioNotice}}
+
     <div class="list-toolbar">
         <form method="GET" action="index.php" class="toolbar-form">
             <input type="hidden" name="page" value="MedicosController" />

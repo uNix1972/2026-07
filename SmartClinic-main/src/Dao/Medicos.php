@@ -201,16 +201,53 @@ class Medicos extends Table
         string $apellidos,
         string $numColegiatura,
         string $telefono,
-        array $asignaciones
+        array $asignaciones,
+        ?array &$consultorioMoves = null
     ): bool {
         $conn = self::getConn();
         $ownsTransaction = !$conn->inTransaction();
+        $consultorioMoves = [];
 
         if ($ownsTransaction) {
             $conn->beginTransaction();
         }
 
         try {
+            $currentAssignments =
+                MedicoCentroSalud::getActivosByMedicoForUpdate($id, $conn);
+            $requestedByCenter = [];
+            foreach ($asignaciones as $asignacion) {
+                $requestedByCenter[(int) $asignacion["centro_salud_id"]] =
+                    trim((string) $asignacion["consultorio"]);
+            }
+
+            foreach ($currentAssignments as $currentAssignment) {
+                $centerId = (int) $currentAssignment["centro_salud_id"];
+                if (!array_key_exists($centerId, $requestedByCenter)) {
+                    continue;
+                }
+
+                $currentRoom = trim(
+                    (string) $currentAssignment["consultorio"]
+                );
+                $requestedRoom = $requestedByCenter[$centerId];
+                if ($currentRoom === $requestedRoom) {
+                    continue;
+                }
+
+                $movedAppointments =
+                    Citas::moveFutureActiveAppointmentsToConsultorio(
+                        $id,
+                        $centerId,
+                        $requestedRoom,
+                        $conn
+                    );
+                $consultorioMoves = array_merge(
+                    $consultorioMoves,
+                    $movedAppointments
+                );
+            }
+
             self::updateMedico(
                 $id,
                 $especialidadId,
@@ -228,6 +265,7 @@ class Medicos extends Table
 
             return true;
         } catch (\Throwable $error) {
+            $consultorioMoves = [];
             if ($ownsTransaction && $conn->inTransaction()) {
                 $conn->rollBack();
             }

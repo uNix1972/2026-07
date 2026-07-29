@@ -157,7 +157,39 @@ class CentroSalud extends Table
     }
 
     /**
+     * Resume las citas futuras activas que impiden desactivar un centro.
+     *
+     * Los estados 3, 4 y 5 son terminales: completada, cancelada y no
+     * asistió. Esas citas conservan su centro como dato histórico, pero no
+     * requieren que la ubicación siga disponible para atención futura.
+     *
+     * @return array{total:int|string, proxima_fecha:?string}
+     */
+    public static function getFutureActiveAppointmentSummary(int $id): array
+    {
+        $sql = "SELECT COUNT(*) AS total,
+                       MIN(fecha_hora) AS proxima_fecha
+                FROM cita
+                WHERE centro_salud_id = :centro_salud_id
+                  AND fecha_hora >= CURRENT_TIMESTAMP
+                  AND estado_id NOT IN (3, 4, 5)";
+
+        $row = parent::obtenerUnRegistro(
+            $sql,
+            ["centro_salud_id" => $id]
+        );
+
+        return is_array($row)
+            ? $row
+            : ["total" => 0, "proxima_fecha" => null];
+    }
+
+    /**
      * Activa o desactiva un centro sin borrar su registro.
+     *
+     * Antes de solicitar INA, el controlador debe consultar
+     * getFutureActiveAppointmentSummary() y rechazar la operación cuando
+     * existan citas que todavía deban atenderse en este centro.
      */
     public static function setStatus(int $id, string $estado): bool
     {
@@ -171,4 +203,3 @@ class CentroSalud extends Table
         ]);
     }
 }
-

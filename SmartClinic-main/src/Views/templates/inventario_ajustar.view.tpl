@@ -25,22 +25,22 @@
       <input type="hidden" name="csrf_token" value="{{csrf_token}}">
       <div class="form-grid">
         <div class="form-group">
-          <label for="producto_id">Producto</label>
-          <select id="producto_id" name="producto_id" required>
-            <option value="">Seleccione...</option>
-            {{foreach productos}}
-            <option value="{{id}}" {{if selected}}selected{{endif selected}}>{{nombre}} (stock global: {{stock_actual}})</option>
-            {{endfor productos}}
-          </select>
-        </div>
-
-        <div class="form-group">
           <label for="centro_salud_id">Centro de salud</label>
           <select id="centro_salud_id" name="centro_salud_id" required>
             <option value="">Seleccione...</option>
             {{foreach centros}}
             <option value="{{id}}" {{if selected}}selected{{endif selected}}>{{nombre}} - {{ciudad}}</option>
             {{endfor centros}}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="producto_id">Producto</label>
+          <select id="producto_id" name="producto_id" required>
+            <option value="">Seleccione...</option>
+            {{foreach productos}}
+            <option value="{{id}}" {{if selected}}selected{{endif selected}}>{{nombre}} (disponible: {{stock_disponible}})</option>
+            {{endfor productos}}
           </select>
         </div>
 
@@ -64,7 +64,7 @@
       </div>
 
       <div class="form-actions">
-        <a href="index.php?page=InventarioController&action=index" class="btn btn--outline">Cancelar</a>
+        <a href="index.php?page=InventarioController&action=index&centro_salud_id={{centroSaludId}}" class="btn btn--outline">Cancelar</a>
         {{if puedeGuardar}}
         <button type="submit" class="btn btn--primary">Registrar ajuste</button>
         {{endif puedeGuardar}}
@@ -72,3 +72,14 @@
     </form>
   </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var centro = document.getElementById('centro_salud_id');
+  if (!centro) return;
+  centro.addEventListener('change', function () {
+    if (!centro.value) return;
+    window.location.href = 'index.php?page=InventarioController&action=ajustar&centro_salud_id='
+      + encodeURIComponent(centro.value);
+  });
+});
+</script>

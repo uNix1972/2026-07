@@ -5,6 +5,7 @@ use Views\Renderer;
 use Dao\Producto as DaoProducto;
 use Dao\AjusteInventario as DaoAjusteInventario;
 use Dao\CentroSalud as DaoCentroSalud;
+use Dao\InventarioCentro as DaoInventarioCentro;
 use Dao\MovimientoInventario as DaoMovimientoInventario;
 use Utilities\Security;
 use Utilities\Site;
@@ -86,6 +87,35 @@ class InventarioController extends PrivateController
         // eliminar() para el detalle.
         $errorEliminarProducto = trim((string) ($_GET["errorEliminar"] ?? ""));
 
+        // Todo el resumen de inventario se muestra para una sola ubicacion.
+        // Si no se recibe un centro, se selecciona el primer centro activo.
+        $centros = DaoCentroSalud::getActivos();
+        $centroSaludId =
+            Validators::sanitizeId($_GET["centro_salud_id"] ?? "");
+        $centroValido = false;
+        foreach ($centros as $centro) {
+            if ((int) $centro["id"] === $centroSaludId) {
+                $centroValido = true;
+                break;
+            }
+        }
+        if (!$centroValido) {
+            $centroSaludId = count($centros) > 0
+                ? (int) $centros[0]["id"]
+                : null;
+        }
+
+        $centroNombreSeleccionado = "";
+        foreach ($centros as &$centro) {
+            $centro["selected"] =
+                $centroSaludId !== null
+                && (int) $centro["id"] === $centroSaludId;
+            if ($centro["selected"]) {
+                $centroNombreSeleccionado = (string) $centro["nombre"];
+            }
+        }
+        unset($centro);
+
         // --- Barra de búsqueda de producto para la tabla de INVENTARIO ---
         // Mismo componente que ya se usa en el Kárdex (kardex-autocomplete.js
         // + Utilities\Site::addEndScript): un <input> de texto que filtra en
@@ -121,21 +151,30 @@ class InventarioController extends PrivateController
         // productos de una vez). Esto es posible precisamente porque el
         // Kárdex ya une ajustes + compras en una sola fuente confiable.
         $fechaCorte = Validators::sanitizeDate($_GET["fecha_corte"] ?? "");
-        $saldosHistoricos = $fechaCorte !== null
-            ? DaoMovimientoInventario::getSaldosPorProductoAFecha($fechaCorte)
+        $saldosHistoricos =
+            $fechaCorte !== null && $centroSaludId !== null
+            ? DaoMovimientoInventario::getSaldosPorProductoAFecha(
+                $fechaCorte,
+                $centroSaludId
+            )
             : null;
 
-        $productos = DaoProducto::getAll();
+        $productos = $centroSaludId !== null
+            ? DaoInventarioCentro::getProductosByCentro($centroSaludId)
+            : [];
         foreach ($productos as &$producto) {
             $productoId = (int) $producto["id"];
             $producto["esActivo"] = ($producto["estado"] ?? "") === "ACT";
 
             if ($saldosHistoricos === null) {
-                // Modo normal: lo de siempre, el stock en vivo.
+                // Modo normal: saldo en vivo de la ubicacion seleccionada.
                 $producto["modoHistorico"] = false;
                 $producto["noExistiaAun"] = false;
-                $producto["stockMostrado"] = (int) $producto["stock_actual"];
-                $producto["stock_bajo"] = intval($producto["stock_actual"]) < intval($producto["stock_minimo"]);
+                $producto["stockMostrado"] =
+                    (int) $producto["stock_centro"];
+                $producto["stock_bajo"] =
+                    (int) $producto["stock_centro"]
+                    < (int) $producto["stock_minimo"];
             } else {
                 // Modo histórico: si el producto se creó DESPUÉS de la
                 // fecha de corte, todavía no existía — mostrar "0" ahí
@@ -224,7 +263,12 @@ class InventarioController extends PrivateController
         // URL base con los filtros de productos activos (búsqueda + fecha
         // de corte), para que "Anterior"/"Siguiente" no los pierda al
         // cambiar de página.
-        $filtrosProductosUrl = "index.php?page=InventarioController&action=index";
+        $filtrosProductosUrl =
+            "index.php?page=InventarioController&action=index";
+        if ($centroSaludId !== null) {
+            $filtrosProductosUrl .=
+                "&centro_salud_id=" . $centroSaludId;
+        }
         if ($productoBuscadoId !== null) {
             $filtrosProductosUrl .= "&producto_id=" . $productoBuscadoId;
         } elseif ($productoBuscadoQuery !== "") {
@@ -293,10 +337,20 @@ class InventarioController extends PrivateController
             // sentido ni consultar la base de datos, ya se sabe que no
             // habrá resultados.
             $movimientosRecientes = [];
+        } elseif ($centroSaludId === null) {
+            $movimientosRecientes = [];
         } elseif ($filtroMovimientosActivo) {
-            $movimientosRecientes = DaoMovimientoInventario::getMovimientos($movProductoBuscadoId, $movFechaInicio, $movFechaFin, 'DESC');
+            $movimientosRecientes =
+                DaoMovimientoInventario::getMovimientos(
+                    $movProductoBuscadoId,
+                    $movFechaInicio,
+                    $movFechaFin,
+                    'DESC',
+                    $centroSaludId
+                );
         } else {
-            $movimientosRecientes = DaoMovimientoInventario::getRecientes(10);
+            $movimientosRecientes =
+                DaoMovimientoInventario::getRecientes(10, $centroSaludId);
         }
 
         foreach ($movimientosRecientes as &$mov) {
@@ -313,7 +367,12 @@ class InventarioController extends PrivateController
 
         // URL base con los filtros de movimientos activos (búsqueda + rango
         // de fechas), para que "Anterior"/"Siguiente" no los pierda.
-        $filtrosMovimientosUrl = "index.php?page=InventarioController&action=index";
+        $filtrosMovimientosUrl =
+            "index.php?page=InventarioController&action=index";
+        if ($centroSaludId !== null) {
+            $filtrosMovimientosUrl .=
+                "&centro_salud_id=" . $centroSaludId;
+        }
         if ($movProductoBuscadoId !== null) {
             $filtrosMovimientosUrl .= "&mov_producto_id=" . $movProductoBuscadoId;
         } elseif ($movProductoBuscadoQuery !== "") {
@@ -330,6 +389,11 @@ class InventarioController extends PrivateController
 
         Renderer::render("inventario", [
             "errorEliminarProducto" => $errorEliminarProducto,
+            "centros" => $centros,
+            "centroSaludId" =>
+                $centroSaludId !== null ? (string) $centroSaludId : "",
+            "centroNombreSeleccionado" => $centroNombreSeleccionado,
+            "sinCentros" => count($centros) === 0,
             "productos" => $productosPagina,
             "movimientosRecientes" => $movimientosRecientesPagina,
             "movFechaInicio" => $movFechaInicio ?? "",
@@ -588,9 +652,11 @@ class InventarioController extends PrivateController
 
     private function ajustar(): void
     {
+        $centroInicial =
+            Validators::sanitizeId($_GET["centro_salud_id"] ?? 0);
         $defaults = [
             "producto_id" => 0,
-            "centro_salud_id" => 0,
+            "centro_salud_id" => $centroInicial ?? 0,
             "tipo_ajuste" => "ENTRADA",
             "cantidad" => "",
             "motivo" => ""
@@ -648,10 +714,16 @@ class InventarioController extends PrivateController
                 return;
             }
 
-            if ($tipoAjuste === "SALIDA" && $cantidad > intval($producto["stock_actual"])) {
+            if (
+                $tipoAjuste === "SALIDA"
+                && $cantidad > DaoInventarioCentro::getStock(
+                    $productoId,
+                    $centroSaludId
+                )
+            ) {
                 $this->renderAjuste(
                     $defaults,
-                    "No hay suficiente stock disponible para registrar esta salida."
+                    "No hay suficiente stock disponible en el centro seleccionado para registrar esta salida."
                 );
                 return;
             }
@@ -696,7 +768,10 @@ class InventarioController extends PrivateController
                 ]
             );
 
-            Site::redirectTo("index.php?page=InventarioController&action=index");
+            Site::redirectTo(
+                "index.php?page=InventarioController&action=index"
+                . "&centro_salud_id=" . $centroSaludId
+            );
             exit;
         }
 
@@ -709,11 +784,21 @@ class InventarioController extends PrivateController
     ): void {
         $productoId = intval($values["producto_id"] ?? 0);
         $centroSaludId = intval($values["centro_salud_id"] ?? 0);
-        $productos = DaoProducto::getActivos();
         $centros = DaoCentroSalud::getActivos();
+        if ($centroSaludId <= 0 && count($centros) > 0) {
+            $centroSaludId = (int) $centros[0]["id"];
+        }
+        $productos = $centroSaludId > 0
+            ? DaoInventarioCentro::getProductosByCentro(
+                $centroSaludId,
+                true
+            )
+            : [];
 
         foreach ($productos as &$producto) {
             $producto["selected"] = intval($producto["id"]) === $productoId;
+            $producto["stock_disponible"] =
+                (int) $producto["stock_centro"];
         }
         unset($producto);
 
@@ -725,6 +810,8 @@ class InventarioController extends PrivateController
         Renderer::render("inventario_ajustar", [
             "productos" => $productos,
             "centros" => $centros,
+            "centroSaludId" =>
+                $centroSaludId > 0 ? (string) $centroSaludId : "",
             "tipoEntrada" =>
                 ($values["tipo_ajuste"] ?? "ENTRADA") === "ENTRADA",
             "tipoSalida" =>
@@ -748,9 +835,7 @@ class InventarioController extends PrivateController
      * Filtros disponibles por GET (todos opcionales, se puede acceder sin
      * ninguno y se muestra el historial completo de todos los productos):
      *   - producto_id     : filtra el kárdex a un solo producto
-     *   - centro_salud_id : filtra a los movimientos ocurridos en un centro
-     *                       (las compras, que aún son globales, se ocultan
-     *                       de la vista cuando este filtro está activo)
+     *   - centro_salud_id : filtra movimientos y saldo de un centro
      *   - fecha_inicio    : 'YYYY-MM-DD', límite inferior (inclusive)
      *   - fecha_fin       : 'YYYY-MM-DD', límite superior (inclusive)
      */
@@ -824,12 +909,8 @@ class InventarioController extends PrivateController
             }
         }
 
-        // Historial a mostrar en pantalla, ya recortado según los filtros
-        // de fecha y de centro que haya puesto el usuario. El saldo
-        // acumulado, sin embargo, siempre se calcula sobre el historial
-        // GLOBAL (ver el comentario del parámetro $centroSaludId en
-        // Dao\MovimientoInventario::getMovimientosConSaldo): el stock del
-        // producto todavía no está partido por centro.
+        // El saldo se calcula con el historial completo del centro elegido.
+        // Sin filtro de centro, representa el total agregado de ubicaciones.
         $movimientos = DaoMovimientoInventario::getMovimientosConSaldo($productoId, $fechaInicio, $fechaFin, $centroSaludId);
 
         // Se arma un pequeño resumen (total entradas / total salidas del
@@ -916,12 +997,25 @@ class InventarioController extends PrivateController
             // ya no existe.
             $productoEncontrado = DaoProducto::getById($productoId);
             if ($productoEncontrado) {
-                $historialCompleto = DaoMovimientoInventario::getMovimientosConSaldo($productoId, null, null);
+                $historialCompleto =
+                    DaoMovimientoInventario::getMovimientosConSaldo(
+                        $productoId,
+                        null,
+                        null,
+                        $centroSaludId
+                    );
                 $saldoCalculado = count($historialCompleto) > 0
                     ? (int) end($historialCompleto)["saldo_acumulado"]
                     : 0;
-                $saldoCuadra = $saldoCalculado === (int) $productoEncontrado["stock_actual"];
+                $stockPersistido = $centroSaludId !== null
+                    ? DaoInventarioCentro::getStock(
+                        $productoId,
+                        $centroSaludId
+                    )
+                    : (int) $productoEncontrado["stock_actual"];
+                $saldoCuadra = $saldoCalculado === $stockPersistido;
                 $productoEncontrado["saldo_calculado"] = $saldoCalculado;
+                $productoEncontrado["stock_actual"] = $stockPersistido;
                 $productoSeleccionado = $productoEncontrado;
             }
         }
@@ -937,8 +1031,6 @@ class InventarioController extends PrivateController
             "fechaFin" => $fechaFin ?? "",
             "productoSeleccionado" => $productoSeleccionado,
             "saldoCuadra" => $saldoCuadra,
-            // Le avisa a la vista que muestre la nota aclarando que, con un
-            // centro filtrado, las compras (todavía globales) no aparecen.
             "filtroPorCentroActivo" => $centroSaludId !== null,
             // Avisa que se corrigió un rango de fechas invertido.
             "fechasInvertidas" => $fechasInvertidas,

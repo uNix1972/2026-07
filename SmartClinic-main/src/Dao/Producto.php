@@ -1,6 +1,12 @@
 <?php
 namespace Dao;
 
+/**
+ * Acceso al catalogo global de productos.
+ *
+ * `stock_actual` se conserva como total agregado de todos los centros. Las
+ * decisiones operativas de disponibilidad usan Dao\InventarioCentro.
+ */
 class Producto extends Table
 {
     public const UNIDADES_MEDIDA = [
@@ -75,6 +81,10 @@ class Producto extends Table
         ]);
     }
 
+    /**
+     * Ajusta el total agregado para mantener compatibilidad con reportes
+     * anteriores. Debe llamarse en la misma transaccion que InventarioCentro.
+     */
     public static function ajustarStock(int $id, int $delta, &$conn = null): bool
     {
         $sql = "UPDATE producto SET stock_actual = stock_actual + :delta WHERE id = :id";

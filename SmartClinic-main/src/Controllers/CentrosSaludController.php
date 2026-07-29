@@ -42,6 +42,9 @@ class CentrosSaludController extends PrivateController
     {
         $search = Validators::sanitizeString($_GET["search"] ?? "", 100);
         $centros = DaoCentroSalud::getAll($search);
+        $statusError =
+            strval($_SESSION["centros_salud_status_error"] ?? "");
+        unset($_SESSION["centros_salud_status_error"]);
         $numeroFila = 1;
 
         foreach ($centros as &$centro) {
@@ -54,7 +57,8 @@ class CentrosSaludController extends PrivateController
 
         Renderer::render("centros_salud", [
             "centros" => $centros,
-            "searchValue" => $search
+            "searchValue" => $search,
+            "statusError" => $statusError
         ]);
     }
 
@@ -162,6 +166,58 @@ class CentrosSaludController extends PrivateController
         $centro = $id !== null ? DaoCentroSalud::getById($id) : false;
 
         if ($centro) {
+            if ($estado === "INA" && $centro["estado"] === "ACT") {
+                $appointmentSummary =
+                    DaoCentroSalud::getFutureActiveAppointmentSummary($id);
+                $futureAppointments =
+                    (int) ($appointmentSummary["total"] ?? 0);
+
+                if ($futureAppointments > 0) {
+                    $nextAppointment = strval(
+                        $appointmentSummary["proxima_fecha"] ?? ""
+                    );
+                    $nextAppointmentText = $nextAppointment !== ""
+                        ? date(
+                            "d/m/Y H:i",
+                            strtotime($nextAppointment)
+                        )
+                        : "fecha no disponible";
+
+                    $_SESSION["centros_salud_status_error"] =
+                        "No se puede desactivar "
+                        . $centro["nombre"]
+                        . ": tiene "
+                        . $futureAppointments
+                        . ($futureAppointments === 1
+                            ? " cita futura activa"
+                            : " citas futuras activas")
+                        . ". La próxima está programada para "
+                        . $nextAppointmentText
+                        . ". Reasigne o cancele estas citas antes de "
+                        . "desactivar el centro.";
+
+                    AuditLogger::log(
+                        "bloqueado",
+                        "Centros de Salud",
+                        "Desactivación bloqueada por citas futuras: "
+                            . $centro["codigo"]
+                            . " - "
+                            . $centro["nombre"],
+                        [
+                            "centro_salud_id" => $id,
+                            "citas_futuras_activas" =>
+                                $futureAppointments,
+                            "proxima_cita" => $nextAppointment
+                        ]
+                    );
+
+                    Site::redirectTo(
+                        "index.php?page=CentrosSaludController&action=index"
+                    );
+                    exit;
+                }
+            }
+
             DaoCentroSalud::setStatus($id, $estado);
             $accion = $estado === "ACT" ? "activar" : "desactivar";
             $descripcion = $estado === "ACT"
@@ -256,4 +312,3 @@ class CentrosSaludController extends PrivateController
         Renderer::render("centro_salud_edit", $data);
     }
 }
-

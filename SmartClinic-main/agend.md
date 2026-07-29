@@ -138,6 +138,29 @@ Important permission rule:
 - Assignment rows are inactivated and reactivated instead of being deleted.
 - `Dao\MedicoCentroSalud` owns relationship queries and is fully commented.
 - `Dao\Medicos` coordinates transactional doctor writes and is fully commented.
+- A health center cannot be deactivated while it has future appointments in a
+  non-terminal state. The blocked action is shown to the administrator and
+  recorded in the audit log with the count and next appointment.
+- Center status buttons reference POST forms rendered outside the catalog
+  table. This avoids invalid table/form parsing and keeps CSRF plus confirmation
+  behavior attached to the intended center.
+- A doctor's center assignment cannot be removed while that doctor has future
+  active appointments at the center. Reassign or cancel those appointments
+  before removing the assignment.
+- Changing only the consultorio of an existing doctor-center assignment is
+  allowed even when the doctor has future active appointments at that center.
+- Every appointment stores its own `cita.consultorio` snapshot. Completed,
+  cancelled, no-show, and past appointments therefore retain the room recorded
+  for their original attention even after the doctor moves.
+- A consultorio change updates that snapshot only for future appointments in
+  non-terminal states at the same doctor-center assignment. The assignment and
+  affected appointments are committed in one transaction.
+- After commit, every affected patient is notified with the previous and new
+  consultorio. Delivery failures do not roll back the room change; each result
+  is audited and the administrator receives an on-screen summary.
+- Appointment states 3, 4, and 5 are terminal for these protections:
+  completed, cancelled, and no-show. They preserve history but do not block
+  operational center or assignment changes.
 - The first doctor-center phase intentionally left appointments unchanged.
   The later appointment-center phase below is now the active behavior.
 - `cita.centro_salud_id` is mandatory after the appointment-center migration.
@@ -148,7 +171,7 @@ Important permission rule:
 - Controllers additionally require the doctor-center relation and center to
   be active when creating or editing an appointment.
 - Existing appointments are backfilled to the active `SmartClinic Center`
-  assignment during migration.
+  assignment and its consultorio during migration.
 - Doctor availability remains global across centers: the same doctor cannot
   attend overlapping appointments in two locations. Different doctors may
   attend at the same time in the same center only when they have different
@@ -188,23 +211,61 @@ Important permission rule:
   integration returns a visible failure result without changing the appointment.
 - Both immediate and manual sends rebuild the message from the saved
   appointment, including its doctor, center, consultorio, date, and time.
-- Manual inventory adjustments require an active `centro_salud_id`. Existing
-  adjustments are backfilled to `SmartClinic Center`, and
-  `fk_ajuste_inventario_centro_salud` preserves the referenced center.
-- `Dao\AjusteInventario::registerWithStockChange()` locks the product row and
-  commits the global stock change plus its center-tagged adjustment in one
-  transaction. Failed or insufficient-stock adjustments roll back completely.
-- Recent inventory movements and the Kárdex display the adjustment center.
-  Purchases remain labeled `Inventario general` because purchases do not yet
-  select a center.
-- Fully center-specific stock remains a future phase: `producto.stock_actual`
-  is still the global balance, so this phase adds adjustment traceability
-  without changing purchase or product-total behavior.
+- The BI dashboard always operates with one selected health center. There is
+  no combined "all centers" option because every appointment, payment,
+  doctor-load series, and summary must share the same location context.
+- `Dao\ClinicaAvanzada::getMetricasBI()` and `getResumenBI()` require a
+  `centro_salud_id`. Revenue is filtered by joining each payment to its
+  appointment, while doctor load starts from the doctor-center assignment.
+- BI defaults to the active `SMARTCLINIC` center when no valid selector value
+  is provided. Inactive centers remain selectable for historical analysis.
+- The BI summary includes appointments scheduled in the current calendar
+  month and revenue received in that month. Both indicators use date ranges
+  and the mandatory selected health center.
+- The appointment-status and doctor-workload panels combine proportional
+  SVG pie charts with exact-value bars. Pie metadata is calculated server-side
+  by `BIController`, so the dashboard does not require a chart dependency.
+- `inventario_centro` stores the authoritative stock for each
+  `(producto_id, centro_salud_id)` pair. A missing pair represents zero stock
+  until the first movement creates it.
+- `producto.stock_actual` remains as a compatibility total. Every purchase or
+  manual adjustment updates the center balance and this aggregate in the same
+  transaction; operational availability must never be validated against the
+  aggregate.
+- Manual inventory adjustments require an active `centro_salud_id`.
+  `Dao\AjusteInventario::registerWithStockChange()` delegates the locked center
+  balance change to `Dao\InventarioCentro` and rolls back both balances plus
+  the adjustment record on failure.
+- `factura_compra.centro_salud_id` is mandatory. Purchase creation and editing
+  select a destination center, and editing first reverses the old detail from
+  its original center before applying the replacement detail.
+- During migration, any legacy difference between the movement ledger and
+  `producto.stock_actual` is recorded once as
+  `[MIGRACION_CENTRO] Saldo inicial conciliado` in `ajuste_inventario`.
+  This preserves the total while giving the Kárdex an auditable opening entry.
+- A purchase cannot be edited when reversing its previous quantities would
+  make the original center negative. This prevents moving stock that has
+  already been consumed.
+- `Dao\MovimientoInventario` combines center-tagged adjustments and purchases.
+  Kárdex running balances and historical inventory are therefore calculated
+  independently for the selected health center.
+- The inventory page always operates in one active health center at a time.
+  Product minimum stock remains a catalog-level threshold shared by centers.
+- The canonical SQL includes repeatable demonstration data for three additional
+  health centers, five providers, and twenty products. New products start with
+  zero stock, and `inventario_centro` receives a zero-balance row for every
+  product and health-center combination.
+- Purchase create and edit use the same responsive product-line editor. Its
+  price label changes between unit and box purchases, and the last remaining
+  line cannot be removed.
 
 ## Existing Operational Notes
 
 - Correct shared-Apache URL:
   `http://localhost:8080/SmartClinic_Final/SmartClinic-main/index.php`.
+- When `BASE_DIR` is empty, `Utilities\Site::configure()` derives the web path
+  from `SCRIPT_NAME`. Assets therefore work both under the shared-Apache
+  subfolder above and at `/` in the project's standalone Docker setup.
 - The project is PHP MVC with vanilla JavaScript; it does not use React.
 - Xdebug connection warnings do not prevent PHP execution.
 - `parameters.env` contains local environment configuration and must not be

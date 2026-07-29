@@ -217,10 +217,28 @@ class CitasController extends PublicController
                 return;
             }
 
+            $appointmentLocation =
+                DaoMedicoCentroSalud::getActivoByMedicoCentro(
+                    $medicoId,
+                    $centroSaludId
+                );
+            if (!$appointmentLocation) {
+                Renderer::render('cita_agendar', array_merge($defaults, [
+                    'medicos' => $this->buildMedicos($medicoId),
+                    'pacientes' => $this->buildPacientes($pacienteId),
+                    'centros' =>
+                        $this->buildCentros($medicoId, $centroSaludId),
+                    'error' =>
+                        'La asignación del médico cambió. Seleccione nuevamente el centro.',
+                ]));
+                return;
+            }
+
             $newId = DaoCitas::insertCita(
                 $pacienteId,
                 $medicoId,
                 $centroSaludId,
+                strval($appointmentLocation['consultorio'] ?? ''),
                 1,
                 $fechaHora
             );
@@ -288,6 +306,7 @@ class CitasController extends PublicController
                         intval($cita['paciente_id']),
                         intval($cita['medico_id']),
                         intval($cita['centro_salud_id']),
+                        strval($cita['consultorio'] ?? ''),
                         4,
                         $cita['fecha_hora']
                     );
@@ -424,11 +443,43 @@ class CitasController extends PublicController
                     return;
                 }
 
+                $appointmentLocation =
+                    DaoMedicoCentroSalud::getActivoByMedicoCentro(
+                        $medicoId,
+                        $centroSaludId
+                    );
+                if (!$appointmentLocation) {
+                    Renderer::render('cita_edit', [
+                        'cita_id' => $id,
+                        'fecha' => $fecha,
+                        'hora' => $hora,
+                        'medicos' => $medicos,
+                        'pacientes' => $pacientes,
+                        'centros' =>
+                            $this->buildCentros($medicoId, $centroSaludId),
+                        'estados' => $estados,
+                        'timeOptions' => $this->getTimeOptions(
+                            $hora,
+                            $medicoId,
+                            $fecha,
+                            $id,
+                            $pacienteId
+                        ),
+                        'minDate' => $this->getMinDate(),
+                        'maxDate' => $this->getMaxDate(),
+                        'modo_lectura' => $modoLectura,
+                        'error' =>
+                            'La asignación del médico cambió. Seleccione nuevamente el centro.',
+                    ]);
+                    return;
+                }
+
                 DaoCitas::updateCita(
                     $id,
                     $pacienteId,
                     $medicoId,
                     $centroSaludId,
+                    strval($appointmentLocation['consultorio'] ?? ''),
                     $estadoId,
                     $fechaHora
                 );

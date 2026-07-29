@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS cita (
     paciente_id INT NOT NULL,
     medico_id INT NOT NULL,
     centro_salud_id INT NULL,
+    consultorio VARCHAR(30) NULL,
     estado_id INT NOT NULL,
     fecha_hora DATETIME NOT NULL,
     FOREIGN KEY (paciente_id) REFERENCES paciente (id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -674,12 +675,14 @@ INSERT IGNORE INTO funciones_roles (funcionRolId, funcionId, rolId, frStatus, fr
     (64, 23, 2, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59'),
     (65, 30, 2, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59');
 
-INSERT IGNORE INTO cita (id, paciente_id, medico_id, estado_id, fecha_hora) VALUES
-    (1, 1, 1, 2, CONCAT(CURDATE(), ' 09:00:00')),
-    (2, 2, 1, 6, CONCAT(CURDATE(), ' 10:00:00')),
-    (3, 3, 2, 1, DATE_ADD(CONCAT(CURDATE(), ' 11:00:00'), INTERVAL 1 DAY)),
-    (4, 4, 3, 4, DATE_SUB(CONCAT(CURDATE(), ' 08:30:00'), INTERVAL 1 DAY)),
-    (5, 5, 2, 3, DATE_SUB(CONCAT(CURDATE(), ' 14:00:00'), INTERVAL 2 DAY));
+INSERT IGNORE INTO cita
+    (id, paciente_id, medico_id, consultorio, estado_id, fecha_hora)
+VALUES
+    (1, 1, 1, '01', 2, CONCAT(CURDATE(), ' 09:00:00')),
+    (2, 2, 1, '01', 6, CONCAT(CURDATE(), ' 10:00:00')),
+    (3, 3, 2, '02', 1, DATE_ADD(CONCAT(CURDATE(), ' 11:00:00'), INTERVAL 1 DAY)),
+    (4, 4, 3, '03', 4, DATE_SUB(CONCAT(CURDATE(), ' 08:30:00'), INTERVAL 1 DAY)),
+    (5, 5, 2, '02', 3, DATE_SUB(CONCAT(CURDATE(), ' 14:00:00'), INTERVAL 2 DAY));
 
 INSERT IGNORE INTO historial_medico (id, cita_id, motivo_consulta, diagnostico, tratamiento, observaciones) VALUES
     (1, 5, 'Control general', 'Paciente estable, signos vitales dentro de rango esperado.', 'Reposo relativo e hidratación.', 'Seguimiento en 30 días.');
@@ -739,6 +742,7 @@ CREATE TABLE IF NOT EXISTS ajuste_inventario (
 CREATE TABLE IF NOT EXISTS factura_compra (
     id INT AUTO_INCREMENT PRIMARY KEY,
     proveedor_id INT NOT NULL,
+    centro_salud_id INT NULL,
     numero_factura VARCHAR(50) NOT NULL,
     fecha_compra DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -945,8 +949,38 @@ SET c.centro_salud_id = (
 )
 WHERE c.centro_salud_id IS NULL;
 
+-- cambios para preservar el consultorio historico de cada cita
+
+SET @cita_consultorio_column_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'cita'
+      AND COLUMN_NAME = 'consultorio'
+);
+
+SET @cita_consultorio_column_sql = IF(
+    @cita_consultorio_column_exists = 0,
+    'ALTER TABLE cita ADD COLUMN consultorio VARCHAR(30) NULL AFTER centro_salud_id',
+    'DO 1'
+);
+
+PREPARE cita_consultorio_column_statement
+    FROM @cita_consultorio_column_sql;
+EXECUTE cita_consultorio_column_statement;
+DEALLOCATE PREPARE cita_consultorio_column_statement;
+
+UPDATE cita c
+JOIN medico_centro_salud mcs
+    ON mcs.medico_id = c.medico_id
+   AND mcs.centro_salud_id = c.centro_salud_id
+SET c.consultorio = mcs.consultorio
+WHERE c.consultorio IS NULL
+   OR TRIM(c.consultorio) = '';
+
 ALTER TABLE cita
-    MODIFY COLUMN centro_salud_id INT NOT NULL;
+    MODIFY COLUMN centro_salud_id INT NOT NULL,
+    MODIFY COLUMN consultorio VARCHAR(30) NOT NULL;
 
 SET @fk_cita_medico_centro_exists = (
     SELECT COUNT(*)
@@ -966,3 +1000,314 @@ SET @fk_cita_medico_centro_sql = IF(
 PREPARE fk_cita_medico_centro_statement FROM @fk_cita_medico_centro_sql;
 EXECUTE fk_cita_medico_centro_statement;
 DEALLOCATE PREPARE fk_cita_medico_centro_statement;
+
+-- cambios para separar el inventario por centro de salud
+
+SET @factura_compra_centro_column_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'factura_compra'
+      AND COLUMN_NAME = 'centro_salud_id'
+);
+
+SET @factura_compra_centro_column_sql = IF(
+    @factura_compra_centro_column_exists = 0,
+    'ALTER TABLE factura_compra ADD COLUMN centro_salud_id INT NULL AFTER proveedor_id',
+    'DO 1'
+);
+
+PREPARE factura_compra_centro_column_statement
+    FROM @factura_compra_centro_column_sql;
+EXECUTE factura_compra_centro_column_statement;
+DEALLOCATE PREPARE factura_compra_centro_column_statement;
+
+UPDATE factura_compra fc
+JOIN centro_salud cs
+    ON cs.codigo = 'SMARTCLINIC'
+SET fc.centro_salud_id = cs.id
+WHERE fc.centro_salud_id IS NULL;
+
+ALTER TABLE factura_compra
+    MODIFY COLUMN centro_salud_id INT NOT NULL;
+
+SET @fk_factura_compra_centro_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'factura_compra'
+      AND CONSTRAINT_NAME = 'fk_factura_compra_centro_salud'
+      AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+);
+
+SET @fk_factura_compra_centro_sql = IF(
+    @fk_factura_compra_centro_exists = 0,
+    'ALTER TABLE factura_compra ADD CONSTRAINT fk_factura_compra_centro_salud FOREIGN KEY (centro_salud_id) REFERENCES centro_salud (id) ON DELETE RESTRICT ON UPDATE CASCADE',
+    'DO 1'
+);
+
+PREPARE fk_factura_compra_centro_statement
+    FROM @fk_factura_compra_centro_sql;
+EXECUTE fk_factura_compra_centro_statement;
+DEALLOCATE PREPARE fk_factura_compra_centro_statement;
+
+CREATE TABLE IF NOT EXISTS inventario_centro (
+    producto_id INT NOT NULL,
+    centro_salud_id INT NOT NULL,
+    stock_actual INT NOT NULL DEFAULT 0,
+    fecha_actualizacion DATETIME NOT NULL
+        DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (producto_id, centro_salud_id),
+    KEY idx_inventario_centro_centro (centro_salud_id),
+    CONSTRAINT fk_inventario_centro_producto
+        FOREIGN KEY (producto_id)
+        REFERENCES producto (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    CONSTRAINT fk_inventario_centro_centro_salud
+        FOREIGN KEY (centro_salud_id)
+        REFERENCES centro_salud (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+INSERT IGNORE INTO inventario_centro
+    (producto_id, centro_salud_id, stock_actual)
+SELECT p.id, cs.id, 0
+FROM producto p
+CROSS JOIN centro_salud cs;
+
+UPDATE inventario_centro ic
+LEFT JOIN (
+    SELECT
+        movimientos.producto_id,
+        movimientos.centro_salud_id,
+        SUM(movimientos.delta) AS saldo_movimientos
+    FROM (
+        SELECT
+            ai.producto_id,
+            ai.centro_salud_id,
+            CASE
+                WHEN ai.tipo_ajuste = 'SALIDA' THEN -ai.cantidad
+                ELSE ai.cantidad
+            END AS delta
+        FROM ajuste_inventario ai
+        UNION ALL
+        SELECT
+            fcd.producto_id,
+            fc.centro_salud_id,
+            fcd.cantidad AS delta
+        FROM factura_compra_detalle fcd
+        JOIN factura_compra fc
+            ON fc.id = fcd.factura_compra_id
+    ) movimientos
+    GROUP BY movimientos.producto_id, movimientos.centro_salud_id
+) saldos
+    ON saldos.producto_id = ic.producto_id
+   AND saldos.centro_salud_id = ic.centro_salud_id
+SET ic.stock_actual = COALESCE(saldos.saldo_movimientos, 0);
+
+INSERT INTO ajuste_inventario
+    (
+        producto_id,
+        centro_salud_id,
+        tipo_ajuste,
+        cantidad,
+        motivo,
+        usuario_id
+    )
+SELECT
+    p.id,
+    centro_default.id,
+    CASE
+        WHEN p.stock_actual - COALESCE(totales.total_centros, 0) < 0
+            THEN 'SALIDA'
+        ELSE 'ENTRADA'
+    END,
+    ABS(p.stock_actual - COALESCE(totales.total_centros, 0)),
+    '[MIGRACION_CENTRO] Saldo inicial conciliado',
+    NULL
+FROM producto p
+JOIN centro_salud centro_default
+    ON centro_default.codigo = 'SMARTCLINIC'
+LEFT JOIN (
+    SELECT producto_id, SUM(stock_actual) AS total_centros
+    FROM inventario_centro
+    GROUP BY producto_id
+) totales
+    ON totales.producto_id = p.id
+WHERE p.stock_actual <> COALESCE(totales.total_centros, 0)
+  AND NOT EXISTS (
+      SELECT 1
+      FROM ajuste_inventario ajuste_migracion
+      WHERE ajuste_migracion.producto_id = p.id
+        AND ajuste_migracion.motivo =
+            '[MIGRACION_CENTRO] Saldo inicial conciliado'
+  );
+
+UPDATE inventario_centro inventario_default
+JOIN centro_salud centro_default
+    ON centro_default.id = inventario_default.centro_salud_id
+   AND centro_default.codigo = 'SMARTCLINIC'
+JOIN producto p
+    ON p.id = inventario_default.producto_id
+LEFT JOIN (
+    SELECT producto_id, SUM(stock_actual) AS total_centros
+    FROM inventario_centro
+    GROUP BY producto_id
+) totales
+    ON totales.producto_id = p.id
+SET inventario_default.stock_actual =
+    inventario_default.stock_actual
+    + (p.stock_actual - COALESCE(totales.total_centros, 0));
+
+-- datos de demostracion para centros de salud, proveedores y productos
+
+INSERT IGNORE INTO centro_salud
+    (
+        codigo,
+        nombre,
+        tipo,
+        direccion,
+        ciudad,
+        telefono,
+        email,
+        estado
+    )
+VALUES
+    (
+        'SC-NORTE',
+        'SmartClinic Norte',
+        'Clinica Ambulatoria',
+        'Boulevard del Norte, Colonia Universidad',
+        'San Pedro Sula',
+        '+504 2550-1100',
+        'norte@smartclinic.hn',
+        'ACT'
+    ),
+    (
+        'SC-CENTRAL',
+        'SmartClinic Central',
+        'Centro de Especialidades',
+        'Barrio Arriba, Avenida Centenario',
+        'Comayagua',
+        '+504 2772-2200',
+        'central@smartclinic.hn',
+        'ACT'
+    ),
+    (
+        'SC-LITORAL',
+        'SmartClinic Litoral',
+        'Clinica Ambulatoria',
+        'Avenida San Isidro, Barrio El Centro',
+        'La Ceiba',
+        '+504 2442-3300',
+        'litoral@smartclinic.hn',
+        'ACT'
+    );
+
+INSERT INTO proveedor
+    (nombre, contacto, telefono, email, direccion, estado)
+SELECT
+    semilla.nombre,
+    semilla.contacto,
+    semilla.telefono,
+    semilla.email,
+    semilla.direccion,
+    'ACT'
+FROM (
+    SELECT
+        'MediSupply Honduras' AS nombre,
+        'Andrea Mejia' AS contacto,
+        '+504 2235-4101' AS telefono,
+        'ventas@medisupply.hn' AS email,
+        'Colonia Palmira, Tegucigalpa' AS direccion
+    UNION ALL
+    SELECT
+        'Distribuidora Farmaceutica Central',
+        'Carlos Pineda',
+        '+504 2237-4102',
+        'pedidos@dfcentral.hn',
+        'Barrio La Granja, Tegucigalpa'
+    UNION ALL
+    SELECT
+        'Insumos Clinicos del Norte',
+        'Melissa Rivera',
+        '+504 2552-4103',
+        'ventas@icnorte.hn',
+        'Colonia Trejo, San Pedro Sula'
+    UNION ALL
+    SELECT
+        'Laboratorios VitalCare',
+        'Roberto Lagos',
+        '+504 2239-4104',
+        'contacto@vitalcare.hn',
+        'Residencial America, Tegucigalpa'
+    UNION ALL
+    SELECT
+        'Equipo Medico Hondureno',
+        'Sofia Martinez',
+        '+504 2241-4105',
+        'cotizaciones@emh.hn',
+        'Boulevard Morazan, Tegucigalpa'
+) semilla
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM proveedor existente
+    WHERE existente.nombre = semilla.nombre
+);
+
+INSERT INTO producto
+    (
+        nombre,
+        descripcion,
+        unidad_medida,
+        unidades_por_caja,
+        stock_actual,
+        stock_minimo,
+        precio_unitario,
+        estado
+    )
+SELECT
+    semilla.nombre,
+    semilla.descripcion,
+    semilla.unidad_medida,
+    semilla.unidades_por_caja,
+    0,
+    semilla.stock_minimo,
+    semilla.precio_unitario,
+    'ACT'
+FROM (
+    SELECT 'Guantes de nitrilo' AS nombre, 'Guantes de examen sin latex, talla mediana' AS descripcion, 'par' AS unidad_medida, 100 AS unidades_por_caja, 200 AS stock_minimo, 4.50 AS precio_unitario
+    UNION ALL SELECT 'Mascarilla quirurgica', 'Mascarilla desechable de tres capas', 'unidad', 50, 150, 3.00
+    UNION ALL SELECT 'Jeringa desechable 5 ml', 'Jeringa esteril con aguja', 'unidad', 100, 100, 4.25
+    UNION ALL SELECT 'Alcohol etilico 70% 1 L', 'Solucion antiseptica para uso clinico', 'botella', 12, 24, 85.00
+    UNION ALL SELECT 'Gasa esteril 10 x 10 cm', 'Compresa de gasa esteril individual', 'unidad', 100, 100, 2.75
+    UNION ALL SELECT 'Venda elastica 10 cm', 'Venda elastica de compresion', 'rollo', 12, 24, 38.00
+    UNION ALL SELECT 'Solucion salina 500 ml', 'Solucion de cloruro de sodio al 0.9%', 'bolsa', 24, 48, 42.00
+    UNION ALL SELECT 'Termometro digital', 'Termometro clinico digital', 'unidad', 1, 5, 145.00
+    UNION ALL SELECT 'Tensiometro aneroide', 'Tensiometro manual con brazalete adulto', 'unidad', 1, 3, 890.00
+    UNION ALL SELECT 'Oximetro de pulso', 'Oximetro digital de dedo', 'unidad', 1, 4, 650.00
+    UNION ALL SELECT 'Bajalenguas de madera', 'Bajalenguas desechable no esteril', 'unidad', 100, 100, 1.25
+    UNION ALL SELECT 'Algodon absorbente 500 g', 'Rollo de algodon para uso clinico', 'rollo', 12, 12, 72.00
+    UNION ALL SELECT 'Cateter intravenoso 22G', 'Cateter periferico esteril', 'unidad', 50, 50, 18.50
+    UNION ALL SELECT 'Tubo de muestra tapa roja', 'Tubo al vacio sin anticoagulante', 'unidad', 100, 100, 8.00
+    UNION ALL SELECT 'Curita adhesiva', 'Aposito adhesivo individual', 'unidad', 100, 100, 1.50
+    UNION ALL SELECT 'Desinfectante de superficies 1 L', 'Desinfectante concentrado para areas clinicas', 'botella', 12, 12, 110.00
+    UNION ALL SELECT 'Papel para camilla 50 m', 'Rollo de papel desechable para camilla', 'rollo', 6, 12, 135.00
+    UNION ALL SELECT 'Bata desechable', 'Bata de aislamiento de manga larga', 'unidad', 50, 50, 28.00
+    UNION ALL SELECT 'Gorro quirurgico', 'Gorro desechable tipo acordeon', 'unidad', 100, 100, 2.00
+    UNION ALL SELECT 'Gel antibacterial 500 ml', 'Gel para higiene de manos con alcohol', 'botella', 12, 24, 68.00
+) semilla
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM producto existente
+    WHERE existente.nombre = semilla.nombre
+);
+
+INSERT IGNORE INTO inventario_centro
+    (producto_id, centro_salud_id, stock_actual)
+SELECT producto.id, centro.id, 0
+FROM producto
+CROSS JOIN centro_salud centro;
