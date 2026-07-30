@@ -43,11 +43,6 @@
       "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zm0-13H5V6h14v1z'/></svg></span>&nbsp;Citas"
     },
     {
-      "id": "Menu_Reportes",
-      "nav_url": "index.php?page=ReportesController",
-      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M5 9h3v10H5V9zm5-4h3v14h-3V5zm5 7h3v7h-3v-7zM4 21h16v-2H4v2z'/></svg></span>&nbsp;Reportes"
-    },
-    {
       "id": "Menu_Inventario",
       "nav_url": "index.php?page=InventarioController&action=index",
       "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M3 3h18v6H3V3zm2 8h14v10H5V11zm3 2v2h8v-2H8z'/></svg></span>&nbsp;Inventario"

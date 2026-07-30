@@ -200,5 +200,48 @@
       {{endifnot ingresos}}
     </section>
   </div>
+
+  <section class="bi-panel bi-report-generator">
+    <div class="bi-panel__heading">
+      <div>
+        <span>Documentos</span>
+        <h3>Reportes imprimibles</h3>
+      </div>
+      <small>{{centroNombre}}</small>
+    </div>
+    <form method="GET" action="index.php" target="_blank"
+      class="bi-report-generator__form">
+      <input type="hidden" name="page" value="BIController">
+      <input type="hidden" name="action" value="report">
+      <input type="hidden" name="centro_salud_id"
+        value="{{centroSaludId}}">
+
+      <div class="form-group">
+        <label for="bi_report_type">Tipo de reporte</label>
+        <select id="bi_report_type" name="report_type" required>
+          <option value="ejecutivo">Resumen ejecutivo</option>
+          <option value="citas">Detalle de citas</option>
+          <option value="financiero">Ingresos y pagos</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="bi_report_desde">Desde</label>
+        <input id="bi_report_desde" type="date" name="desde"
+          value="{{reporteDesde}}" required>
+      </div>
+
+      <div class="form-group">
+        <label for="bi_report_hasta">Hasta</label>
+        <input id="bi_report_hasta" type="date" name="hasta"
+          value="{{reporteHasta}}" required>
+      </div>
+
+      <button type="submit" class="btn btn--primary">
+        <i class="fas fa-file-lines" aria-hidden="true"></i>
+        Generar reporte
+      </button>
+    </form>
+  </section>
   {{endifnot sinCentros}}
 </div>

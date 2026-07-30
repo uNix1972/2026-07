@@ -1,75 +1,263 @@
-<div class="container section-pad">
-    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px;">
-        <h2 style="font-size:2.2rem;color:#111827;margin:0;">Centros de Salud</h2>
-        <a class="btn btn--primary" href="index.php?page=CentrosSaludController&action=create">
-            Nuevo centro
+<div class="container section-pad health-centers-page">
+    <header class="health-centers-hero">
+        <div>
+            <span class="health-centers-eyebrow">Administración de sedes</span>
+            <h2>Centros de Salud</h2>
+            <p>Administre las sedes y su información operativa desde un solo lugar.</p>
+        </div>
+        <a class="btn btn--primary" href="{{newUrl}}">
+            <span aria-hidden="true">+</span> Nuevo centro
         </a>
+    </header>
+
+    <section class="health-centers-summary" aria-label="Resumen de centros de salud">
+        <article class="health-centers-stat">
+            <span class="health-centers-stat__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4h2a2 2 0 0 1 2 2v10M8 7h4M10 5v4M8 12h2m2 0h2m-6 4h2m2 0h2M3 21h18"/>
+                </svg>
+            </span>
+            <div>
+                <span>Centros activos</span>
+                <strong>{{centrosActivos}}</strong>
+            </div>
+        </article>
+        <article class="health-centers-stat">
+            <span class="health-centers-stat__icon is-blue" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2m6.5-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8.5 1v6m3-3h-6"/>
+                </svg>
+            </span>
+            <div>
+                <span>Médicos asignados</span>
+                <strong>{{medicosAsignados}}</strong>
+            </div>
+        </article>
+        <article class="health-centers-stat">
+            <span class="health-centers-stat__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M6 2v4m12-4v4M3 9h18M5 4h14a2 2 0 0 1 2 2v15H3V6a2 2 0 0 1 2-2Zm3 9h3m2 0h3m-8 4h3m2 0h3"/>
+                </svg>
+            </span>
+            <div>
+                <span>Citas de hoy</span>
+                <strong>{{citasHoy}}</strong>
+            </div>
+        </article>
+    </section>
+
+    {{if success}}
+    <div class="form-alert success health-centers-alert" role="status">
+        {{success}}
     </div>
+    {{endif success}}
 
     {{if statusError}}
-    <div class="form-alert error" style="display:block;margin-bottom:20px;">
+    <div class="form-alert error health-centers-alert" role="alert">
         {{statusError}}
     </div>
     {{endif statusError}}
 
-    <form method="GET" action="index.php" style="display:flex;gap:10px;max-width:680px;margin-bottom:20px;">
-        <input type="hidden" name="page" value="CentrosSaludController">
-        <input type="hidden" name="action" value="index">
-        <label for="search" style="position:absolute;left:-10000px;">Buscar centros de salud</label>
-        <input id="search" type="search" name="search" value="{{searchValue}}" placeholder="Buscar por código, nombre, tipo o ciudad" style="flex:1;min-width:0;padding:11px 12px;border:1px solid #C7C7CC;border-radius:8px;">
-        <button type="submit" class="btn btn--outline">Buscar</button>
-    </form>
+    <div class="health-centers-workspace">
+        <aside id="centro-form" class="health-center-editor">
+            <div class="health-center-editor__heading">
+                <div>
+                    <span class="health-centers-eyebrow">
+                        {{if editing}}Centro seleccionado{{endif editing}}
+                        {{if creating}}Nuevo registro{{endif creating}}
+                    </span>
+                    <h3>{{formTitle}}</h3>
+                    <p>{{formSubtitle}}</p>
+                </div>
+                {{if editing}}
+                <a class="health-center-editor__new" href="{{newUrl}}">
+                    + Nuevo
+                </a>
+                {{endif editing}}
+            </div>
 
-    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
-        <div class="table-responsive">
-            <table style="width:100%;border-collapse:collapse;">
-                <thead>
-                    <tr style="background:#033B9F;color:#fff;">
-                        <th style="padding:14px;text-align:left;">#</th>
-                        <th style="padding:14px;text-align:left;">Código</th>
-                        <th style="padding:14px;text-align:left;">Nombre</th>
-                        <th style="padding:14px;text-align:left;">Tipo</th>
-                        <th style="padding:14px;text-align:left;">Ciudad</th>
-                        <th style="padding:14px;text-align:left;">Teléfono</th>
-                        <th style="padding:14px;text-align:left;">Estado</th>
-                        <th style="padding:14px;text-align:left;">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{foreach centros}}
-                    <tr style="border-bottom:1px solid #E5E7EB;">
-                        <td style="padding:13px;">{{numero_fila}}</td>
-                        <td style="padding:13px;font-weight:700;">{{codigo}}</td>
-                        <td style="padding:13px;">{{nombre}}</td>
-                        <td style="padding:13px;">{{tipo}}</td>
-                        <td style="padding:13px;">{{ciudad}}</td>
-                        <td style="padding:13px;">{{telefono}}</td>
-                        <td style="padding:13px;">{{estado_texto}}</td>
-                        <td style="padding:13px;white-space:nowrap;">
-                            <div style="display:flex; justify-content:flex-end; flex-wrap:nowrap; gap:6px;">
-                                <a class="btn btn--outline" href="index.php?page=CentrosSaludController&action=edit&id={{id}}" style="padding:6px 12px; font-size:12px;">Editar</a>
+            {{if editing}}
+            <div class="health-center-editor__selected">
+                <span class="health-center-editor__avatar" aria-hidden="true">CS</span>
+                <div>
+                    <strong>{{nombre}}</strong>
+                    <span>Código {{codigo}}</span>
+                </div>
+            </div>
+            {{endif editing}}
 
-                                {{if activo}}
-                                <button type="submit" form="center-status-{{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Desactivar</button>
-                                {{endif activo}}
+            {{if error}}
+            <div class="form-alert error health-center-editor__error" role="alert">
+                {{error}}
+            </div>
+            {{endif error}}
 
-                                {{if inactivo}}
-                                <button type="submit" form="center-status-{{id}}" class="btn btn--outline" style="padding:6px 12px; font-size:12px;">Activar</button>
-                                {{endif inactivo}}
-                            </div>
-                        </td>
-                    </tr>
-                    {{endfor centros}}
-                </tbody>
-            </table>
-        </div>
+            {{if creating}}
+            <form method="POST" action="index.php?page=CentrosSaludController&amp;action=create">
+            {{endif creating}}
+            {{if editing}}
+            <form method="POST" action="index.php?page=CentrosSaludController&amp;action=edit&amp;id={{id}}">
+            {{endif editing}}
+                <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+                <input type="hidden" name="return_search" value="{{searchValue}}">
+                <input type="hidden" name="return_status" value="{{statusValue}}">
+
+                <div class="health-center-form-grid">
+                    <div class="form-group">
+                        <label for="codigo">Código</label>
+                        <input id="codigo" type="text" name="codigo" maxlength="30" value="{{codigo}}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nombre">Nombre</label>
+                        <input id="nombre" type="text" name="nombre" maxlength="150" value="{{nombre}}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tipo">Tipo</label>
+                        <select id="tipo" name="tipo" required>
+                            {{foreach tipos}}
+                            <option value="{{valor}}" {{if selected}}selected{{endif selected}}>{{etiqueta}}</option>
+                            {{endfor tipos}}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ciudad">Ciudad</label>
+                        <input id="ciudad" type="text" name="ciudad" maxlength="100" value="{{ciudad}}" required>
+                    </div>
+
+                    <div class="form-group health-center-form-grid__wide">
+                        <label for="direccion">Dirección</label>
+                        <input id="direccion" type="text" name="direccion" maxlength="255" value="{{direccion}}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="telefono">Teléfono</label>
+                        <input id="telefono" type="tel" name="telefono" maxlength="20" value="{{telefono}}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Correo electrónico</label>
+                        <input id="email" type="email" name="email" maxlength="150" value="{{email}}">
+                    </div>
+                </div>
+
+                <div class="health-center-editor__actions">
+                    <a class="btn btn--outline" href="{{newUrl}}">
+                        {{if editing}}Cancelar edición{{endif editing}}
+                        {{if creating}}Limpiar{{endif creating}}
+                    </a>
+                    <button type="submit" class="btn btn--primary">
+                        {{submitLabel}}
+                    </button>
+                </div>
+            </form>
+        </aside>
+
+        <section class="health-centers-list" aria-labelledby="health-centers-list-title">
+            <div class="health-centers-list__heading">
+                <div>
+                    <span class="health-centers-eyebrow">Directorio</span>
+                    <h3 id="health-centers-list-title">Centros registrados</h3>
+                </div>
+                <span class="health-centers-list__count">
+                    {{totalResultados}} encontrados
+                </span>
+            </div>
+
+            <form class="health-centers-filter" method="GET" action="index.php">
+                <input type="hidden" name="page" value="CentrosSaludController">
+                <input type="hidden" name="action" value="index">
+                {{if editing}}
+                <input type="hidden" name="edit_id" value="{{selectedId}}">
+                {{endif editing}}
+
+                <div class="health-centers-search">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m20 20-4-4"></path>
+                    </svg>
+                    <label class="sr-only" for="health-center-search">
+                        Buscar centros de salud
+                    </label>
+                    <input id="health-center-search" type="search" name="search" value="{{searchValue}}" placeholder="Buscar por nombre, código o ciudad">
+                </div>
+
+                <label class="sr-only" for="health-center-status">
+                    Filtrar por estado
+                </label>
+                <select id="health-center-status" name="status">
+                    <option value="" {{if statusAll}}selected{{endif statusAll}}>Todos</option>
+                    <option value="ACT" {{if statusActive}}selected{{endif statusActive}}>Activos</option>
+                    <option value="INA" {{if statusInactive}}selected{{endif statusInactive}}>Inactivos</option>
+                </select>
+
+                <button type="submit" class="btn btn--outline">Filtrar</button>
+            </form>
+
+            <div class="health-centers-results">
+                {{foreach centros}}
+                <article class="health-center-card {{if selected}}is-selected{{endif selected}}">
+                    <div class="health-center-card__identity">
+                        <span class="health-center-card__icon" aria-hidden="true">CS</span>
+                        <div>
+                            <h4>{{nombre}}</h4>
+                            <span>{{codigo}} · {{tipo_texto}}</span>
+                        </div>
+                    </div>
+
+                    <div class="health-center-card__details">
+                        <div>
+                            <span>Ciudad</span>
+                            <strong>{{ciudad}}</strong>
+                        </div>
+                        <div>
+                            <span>Teléfono</span>
+                            <strong>{{telefono_texto}}</strong>
+                        </div>
+                    </div>
+
+                    <div class="health-center-card__actions">
+                        <span class="health-center-status {{if activo}}is-active{{endif activo}}{{if inactivo}}is-inactive{{endif inactivo}}">
+                            {{estado_texto}}
+                        </span>
+                        <a class="health-center-edit-link" href="{{edit_url}}">
+                            Editar
+                        </a>
+                        {{if activo}}
+                        <button type="submit" form="center-status-{{id}}" class="health-center-status-action">
+                            Desactivar
+                        </button>
+                        {{endif activo}}
+                        {{if inactivo}}
+                        <button type="submit" form="center-status-{{id}}" class="health-center-status-action">
+                            Activar
+                        </button>
+                        {{endif inactivo}}
+                    </div>
+                </article>
+                {{endfor centros}}
+
+                {{ifnot centros}}
+                <div class="health-centers-empty">
+                    <span aria-hidden="true">⌕</span>
+                    <h4>No encontramos centros</h4>
+                    <p>Pruebe otra búsqueda o cambie el filtro de estado.</p>
+                </div>
+                {{endifnot centros}}
+            </div>
+        </section>
     </div>
 
     {{foreach centros}}
-    <form id="center-status-{{id}}" method="POST" action="index.php?page=CentrosSaludController&action=status" data-confirm="¿Seguro que desea {{if activo}}desactivar{{endif activo}}{{if inactivo}}activar{{endif inactivo}} este centro de salud?" hidden>
+    <form id="center-status-{{id}}" method="POST" action="index.php?page=CentrosSaludController&amp;action=status" data-confirm="¿Seguro que desea {{if activo}}desactivar{{endif activo}}{{if inactivo}}activar{{endif inactivo}} este centro de salud?" hidden>
         <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
         <input type="hidden" name="id" value="{{id}}">
         <input type="hidden" name="estado" value="{{if activo}}INA{{endif activo}}{{if inactivo}}ACT{{endif inactivo}}">
+        <input type="hidden" name="return_search" value="{{~searchValue}}">
+        <input type="hidden" name="return_status" value="{{~statusValue}}">
+        <input type="hidden" name="return_edit_id" value="{{~selectedId}}">
     </form>
     {{endfor centros}}
 </div>

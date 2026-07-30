@@ -4,6 +4,7 @@ namespace Controllers;
 
 use Dao\CentroSalud as DaoCentroSalud;
 use Dao\ClinicaAvanzada as Clinica;
+use Utilities\Security;
 use Utilities\Validators;
 use Views\Renderer;
 
@@ -46,6 +47,14 @@ class BIController extends PrivateController
                 'ingresos' => [],
                 'cargaMedicos' => []
             ]);
+            return;
+        }
+
+        if (($_GET['action'] ?? '') === 'report') {
+            $this->renderPrintableReport(
+                $centroSeleccionado,
+                $centroSaludId
+            );
             return;
         }
 
@@ -118,11 +127,209 @@ class BIController extends PrivateController
                     $cargaMedicos
                 )
             ),
+            'reporteDesde' => date('Y-m-01'),
+            'reporteHasta' => date('Y-m-d'),
         ]);
     }
 
     /**
-     * Añade una escala porcentual estable para las barras del tablero.
+     * Genera un documento BI independiente y listo para imprimir.
+     *
+     * El centro ya fue validado contra el catalogo disponible en run(). El
+     * tipo se limita a una lista cerrada y las fechas invalidas regresan al
+     * mes actual. Si el rango llega invertido se normaliza antes de consultar.
+     */
+    private function renderPrintableReport(
+        array $centro,
+        int $centroSaludId
+    ): void {
+        $reportTypes = [
+            'ejecutivo' => 'Reporte ejecutivo',
+            'citas' => 'Detalle de citas',
+            'financiero' => 'Reporte financiero'
+        ];
+        $reportType = strtolower(trim((string) (
+            $_GET['report_type'] ?? 'ejecutivo'
+        )));
+        if (!isset($reportTypes[$reportType])) {
+            $reportType = 'ejecutivo';
+        }
+
+        $fechaDesde = Validators::sanitizeDate(
+            (string) ($_GET['desde'] ?? '')
+        ) ?? date('Y-m-01');
+        $fechaHasta = Validators::sanitizeDate(
+            (string) ($_GET['hasta'] ?? '')
+        ) ?? date('Y-m-d');
+        if ($fechaDesde > $fechaHasta) {
+            [$fechaDesde, $fechaHasta] = [$fechaHasta, $fechaDesde];
+        }
+
+        $reporte = Clinica::getReporteBI(
+            $centroSaludId,
+            $fechaDesde,
+            $fechaHasta
+        );
+        $resumen = $reporte['resumen'] ?? [];
+        $citas = $this->prepareAppointmentRows(
+            $reporte['citas'] ?? []
+        );
+        $pagos = $this->preparePaymentRows(
+            $reporte['pagos'] ?? []
+        );
+        $citasPorEstado = $this->escapeReportRows(
+            $reporte['citasPorEstado'] ?? [],
+            ['estado']
+        );
+        $cargaMedicos = $this->escapeReportRows(
+            $reporte['cargaMedicos'] ?? [],
+            ['medico', 'especialidad']
+        );
+        $usuario = Security::getUser();
+
+        Renderer::render('bi_report_print', [
+            'reportTitle' => $reportTypes[$reportType],
+            'reporteEjecutivo' => $reportType === 'ejecutivo',
+            'reporteCitas' => $reportType === 'citas',
+            'reporteFinanciero' => $reportType === 'financiero',
+            'centroSaludId' => $centroSaludId,
+            'centroNombre' => $this->escape((string) $centro['nombre']),
+            'centroCodigo' => $this->escape((string) $centro['codigo']),
+            'centroCiudad' => $this->escape((string) $centro['ciudad']),
+            'periodoDesde' => $this->formatDate($fechaDesde),
+            'periodoHasta' => $this->formatDate($fechaHasta),
+            'generadoEn' => date('d/m/Y H:i'),
+            'generadoPor' => $this->escape(
+                is_array($usuario)
+                    ? (string) ($usuario['userName'] ?? 'Usuario')
+                    : 'Usuario'
+            ),
+            'totalCitas' => (int) ($resumen['total_citas'] ?? 0),
+            'citasCompletadas' =>
+                (int) ($resumen['citas_completadas'] ?? 0),
+            'citasCanceladas' =>
+                (int) ($resumen['citas_canceladas'] ?? 0),
+            'totalPacientes' => (int) ($resumen['pacientes'] ?? 0),
+            'totalMedicos' => (int) ($resumen['medicos'] ?? 0),
+            'totalPagos' => (int) ($resumen['total_pagos'] ?? 0),
+            'ingresos' => number_format(
+                (float) ($resumen['ingresos'] ?? 0),
+                2,
+                '.',
+                ','
+            ),
+            'promedioPago' => number_format(
+                (float) ($resumen['promedio_pago'] ?? 0),
+                2,
+                '.',
+                ','
+            ),
+            'citasPorEstado' => $citasPorEstado,
+            'cargaMedicos' => $cargaMedicos,
+            'citas' => $citas,
+            'sinCitas' => count($citas) === 0,
+            'pagos' => $pagos,
+            'sinPagos' => count($pagos) === 0,
+        ]);
+    }
+
+    /**
+     * Formatea y escapa las filas del detalle de citas para la plantilla.
+     */
+    private function prepareAppointmentRows(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $dateTime = new \DateTimeImmutable(
+                (string) $row['fecha_hora']
+            );
+            $row['fecha'] = $dateTime->format('d/m/Y');
+            $row['hora'] = $dateTime->format('h:i A');
+        }
+        unset($row);
+
+        return $this->escapeReportRows(
+            $rows,
+            [
+                'paciente',
+                'medico',
+                'especialidad',
+                'estado',
+                'consultorio'
+            ]
+        );
+    }
+
+    /**
+     * Formatea y escapa las filas del detalle financiero para la plantilla.
+     */
+    private function preparePaymentRows(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $dateTime = new \DateTimeImmutable(
+                (string) $row['fecha_pago']
+            );
+            $row['fecha'] = $dateTime->format('d/m/Y H:i');
+            $row['total_formateado'] = number_format(
+                (float) ($row['total'] ?? 0),
+                2,
+                '.',
+                ','
+            );
+        }
+        unset($row);
+
+        return $this->escapeReportRows(
+            $rows,
+            [
+                'paciente',
+                'medico',
+                'metodo_pago',
+                'id_transaccion_api'
+            ]
+        );
+    }
+
+    /**
+     * Escapa campos textuales concretos antes de enviarlos al renderer.
+     */
+    private function escapeReportRows(
+        array $rows,
+        array $textKeys
+    ): array {
+        foreach ($rows as &$row) {
+            foreach ($textKeys as $key) {
+                $row[$key] = $this->escape(
+                    (string) ($row[$key] ?? '')
+                );
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Convierte una fecha ISO valida a la presentacion del reporte.
+     */
+    private function formatDate(string $date): string
+    {
+        return (new \DateTimeImmutable($date))->format('d/m/Y');
+    }
+
+    /**
+     * Protege valores variables que se imprimen dentro del HTML.
+     */
+    private function escape(string $value): string
+    {
+        return htmlspecialchars(
+            $value,
+            ENT_QUOTES | ENT_SUBSTITUTE,
+            'UTF-8'
+        );
+    }
+
+    /**
+     * Anade una escala porcentual estable para las barras del tablero.
      */
     private function addPercentage(
         array $rows,

@@ -19,27 +19,82 @@ class CentroSalud extends Table
      * con sentencias preparadas de PDO y así se evita reutilizar un mismo
      * marcador nombrado varias veces dentro de la consulta.
      */
-    public static function getAll(string $search = ""): array
+    public static function getAll(
+        string $search = "",
+        string $status = ""
+    ): array
     {
-        if ($search === "") {
-            $sql = "SELECT * FROM centro_salud ORDER BY nombre ASC";
-            return parent::obtenerRegistros($sql, []);
+        $conditions = [];
+        $params = [];
+
+        if ($search !== "") {
+            $term = "%" . $search . "%";
+            $conditions[] = "(
+                codigo LIKE :codigo
+                OR nombre LIKE :nombre
+                OR tipo LIKE :tipo
+                OR ciudad LIKE :ciudad
+            )";
+            $params = [
+                "codigo" => $term,
+                "nombre" => $term,
+                "tipo" => $term,
+                "ciudad" => $term
+            ];
         }
 
-        $term = "%" . $search . "%";
-        $sql = "SELECT * FROM centro_salud
-                WHERE codigo LIKE :codigo
-                   OR nombre LIKE :nombre
-                   OR tipo LIKE :tipo
-                   OR ciudad LIKE :ciudad
-                ORDER BY nombre ASC";
+        if (in_array($status, ["ACT", "INA"], true)) {
+            $conditions[] = "estado = :estado";
+            $params["estado"] = $status;
+        }
 
-        return parent::obtenerRegistros($sql, [
-            "codigo" => $term,
-            "nombre" => $term,
-            "tipo" => $term,
-            "ciudad" => $term
-        ]);
+        $sql = "SELECT * FROM centro_salud";
+        if (count($conditions) > 0) {
+            $sql .= " WHERE " . implode(" AND ", $conditions);
+        }
+        $sql .= " ORDER BY nombre ASC";
+
+        return parent::obtenerRegistros($sql, $params);
+    }
+
+    /**
+     * Resume la operación visible en el espacio unificado del catálogo.
+     *
+     * Las tres cifras se calculan en una sola consulta para evitar cargar
+     * listados completos únicamente para contar centros, asignaciones o citas.
+     */
+    public static function getWorkspaceSummary(): array
+    {
+        $sql = "SELECT
+                    (
+                        SELECT COUNT(*)
+                        FROM centro_salud
+                        WHERE estado = 'ACT'
+                    ) AS centros_activos,
+                    (
+                        SELECT COUNT(*)
+                        FROM medico_centro_salud
+                        WHERE estado = 'ACT'
+                    ) AS medicos_asignados,
+                    (
+                        SELECT COUNT(*)
+                        FROM cita
+                        WHERE fecha_hora >= CURRENT_DATE
+                          AND fecha_hora < DATE_ADD(
+                              CURRENT_DATE,
+                              INTERVAL 1 DAY
+                          )
+                    ) AS citas_hoy";
+
+        $row = parent::obtenerUnRegistro($sql, []);
+
+        return is_array($row)
+            ? $row
+            : [
+                "centros_activos" => 0,
+                "medicos_asignados" => 0,
+                "citas_hoy" => 0
+            ];
     }
 
     /**

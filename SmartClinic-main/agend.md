@@ -130,6 +130,11 @@ Important permission rule:
 - Controller: `Controllers\CentrosSaludController`.
 - Menu permission: `Menu_CentrosSalud`.
 - Initial access: administrator role 1.
+- Listing, search, status filtering, creation, and editing share the
+  `centros_salud` workspace. The form stays on the left and the directory stays
+  on the right; legacy `create` and `edit` GET routes redirect into this page.
+- Existing center types outside the current creation catalog remain selectable
+  during editing so saving another field never overwrites historical type data.
 - Fields: code, name, type, address, city, phone, email, status, and timestamps.
 - Doctors can work at multiple active centers through `medico_centro_salud`.
 - Creating or editing a doctor requires at least one active center and a
@@ -270,6 +275,25 @@ Important permission rule:
 - Purchase create and edit use the same responsive product-line editor. Its
   price label changes between unit and box purchases, and the last remaining
   line cannot be removed.
+- The original `ReportesController` remains a lightweight operational summary
+  with CSV export. Printable management documents belong to `BIController`
+  because BI already requires the health-center context used by those reports.
+- `ReportesController` remains reachable by direct URL for compatibility, but
+  it is not listed in `nav.config.json`; users access current printable reports
+  from the BI menu instead.
+- The BI dashboard must retain its current cards, charts, and center selector.
+  Its report generator is an additive section with three outputs: executive
+  summary, appointment detail, and financial collections.
+- Every printable BI report requires one valid `centro_salud_id` and a date
+  range. Appointment metrics use `cita.fecha_hora`; collection metrics use
+  `pago_factura.fecha_pago` joined through the appointment to its center.
+- `Dao\ClinicaAvanzada::getReporteBI()` owns printable-report data. The report
+  controller validates type and dates, prepares display values, and escapes
+  variable text before rendering `bi_report_print.view.tpl`.
+- Printable BI documents include report identity, center, period, generation
+  time and user, KPI totals, report-specific tables, and signature lines.
+  Print CSS uses A4 landscape, repeats table headers, and hides application
+  navigation and report controls.
 
 ## Existing Operational Notes
 

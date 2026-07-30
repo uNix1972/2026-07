@@ -141,6 +141,9 @@ $advancedClinicDao = file_get_contents(
 $biView = file_get_contents(
     __DIR__ . '/../src/Views/templates/bi_dashboard.view.tpl'
 );
+$biPrintView = file_get_contents(
+    __DIR__ . '/../src/Views/templates/bi_report_print.view.tpl'
+);
 $biCss = file_get_contents(__DIR__ . '/../public/css/main.css');
 check(
     strpos($biController, "Validators::sanitizeId") !== false
@@ -213,6 +216,45 @@ check(
         ) !== false
         && strpos($biCss, '.bi-pie__segment') !== false,
     'tablero BI muestra graficas de pastel accesibles'
+);
+check(
+    strpos($biView, 'Reportes imprimibles') !== false
+        && strpos($biView, 'name="report_type"') !== false
+        && strpos($biView, 'name="centro_salud_id"') !== false
+        && strpos($biView, 'target="_blank"') !== false,
+    'tablero BI conserva sus indicadores y agrega generador de reportes'
+);
+check(
+    strpos($biController, "(\$_GET['action'] ?? '') === 'report'")
+        !== false
+        && strpos($biController, 'renderPrintableReport(') !== false
+        && strpos($biController, 'Clinica::getReporteBI(') !== false
+        && strpos($biController, "Validators::sanitizeDate") !== false,
+    'controlador BI valida y genera reportes por centro y periodo'
+);
+check(
+    strpos($advancedClinicDao, 'getReporteBI(') !== false
+        && strpos($advancedClinicDao, 'getCitasDetalleReporteBI(')
+            !== false
+        && strpos($advancedClinicDao, 'getPagosDetalleReporteBI(')
+            !== false
+        && strpos($advancedClinicDao, 'pf.fecha_pago >= :fecha_desde')
+            !== false,
+    'DAO BI documenta reportes operativos y financieros filtrados'
+);
+check(
+    strpos($biPrintView, '{{if reporteEjecutivo}}') !== false
+        && strpos($biPrintView, '{{if reporteCitas}}') !== false
+        && strpos($biPrintView, '{{if reporteFinanciero}}') !== false
+        && strpos($biPrintView, 'onclick="window.print()"') !== false
+        && strpos($biPrintView, 'Elaborado por') !== false,
+    'vista BI ofrece tres documentos imprimibles con trazabilidad'
+);
+check(
+    strpos($biCss, '.bi-report-document') !== false
+        && strpos($biCss, '@media print') !== false
+        && strpos($biCss, 'size: A4 landscape') !== false,
+    'reportes BI tienen formato profesional para pantalla e impresion'
 );
 $sql = file_get_contents(__DIR__ . '/../docs/smartclinic_1p.sql');
 $seedCenterCodes = ['SC-NORTE', 'SC-CENTRAL', 'SC-LITORAL'];
@@ -523,7 +565,11 @@ check(strpos($purchaseCreateView, 'name="centro_salud_id"') !== false, 'alta de 
 check(strpos($purchaseEditView, 'name="centro_salud_id"') !== false, 'edición de compra exige centro de destino');
 
 $navConfig = file_get_contents(__DIR__ . '/../nav.config.json');
-check(strpos($navConfig, 'ReportesController') !== false, 'menú de reportes registrado');
+check(
+    strpos($navConfig, 'ReportesController') === false
+        && strpos($navConfig, 'Menu_Reportes') === false,
+    'menu independiente de reportes retirado en favor del BI'
+);
 check(strpos($navConfig, 'AuditController') !== false, 'menú de bitácora registrado');
 check(strpos($navConfig, 'DoctoresController') !== false, 'menú portal doctor registrado');
 check(strpos($navConfig, 'PacientePortalController') !== false, 'menú portal paciente registrado');

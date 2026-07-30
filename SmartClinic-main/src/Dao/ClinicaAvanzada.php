@@ -537,4 +537,292 @@ class ClinicaAvanzada extends Table
             'resumen' => self::getResumenBI($centroSaludId)
         ];
     }
+
+    /**
+     * Reune los conjuntos de datos de los reportes imprimibles del BI.
+     *
+     * El periodo se aplica a la fecha programada de las citas y a la fecha
+     * efectiva de los pagos, segun corresponda. Todas las consultas exigen
+     * un centro de salud para impedir mezclar operaciones entre sedes.
+     */
+    public static function getReporteBI(
+        int $centroSaludId,
+        string $fechaDesde,
+        string $fechaHasta
+    ): array {
+        return [
+            'resumen' => self::getResumenReporteBI(
+                $centroSaludId,
+                $fechaDesde,
+                $fechaHasta
+            ),
+            'citasPorEstado' => self::getCitasPorEstadoReporteBI(
+                $centroSaludId,
+                $fechaDesde,
+                $fechaHasta
+            ),
+            'cargaMedicos' => self::getCargaMedicosReporteBI(
+                $centroSaludId,
+                $fechaDesde,
+                $fechaHasta
+            ),
+            'citas' => self::getCitasDetalleReporteBI(
+                $centroSaludId,
+                $fechaDesde,
+                $fechaHasta
+            ),
+            'pagos' => self::getPagosDetalleReporteBI(
+                $centroSaludId,
+                $fechaDesde,
+                $fechaHasta
+            )
+        ];
+    }
+
+    /**
+     * Calcula los indicadores de cabecera para un centro y periodo.
+     *
+     * Las cifras de citas usan fecha_hora. Las cifras financieras usan
+     * fecha_pago, de modo que el reporte refleje el ingreso cuando realmente
+     * fue recibido aunque la cita pertenezca a otra fecha.
+     */
+    public static function getResumenReporteBI(
+        int $centroSaludId,
+        string $fechaDesde,
+        string $fechaHasta
+    ): array {
+        $sql = "SELECT
+                    COUNT(c.id) AS total_citas,
+                    COALESCE(
+                        SUM(CASE WHEN c.estado_id = 3 THEN 1 ELSE 0 END),
+                        0
+                    ) AS citas_completadas,
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN c.estado_id IN (4, 5) THEN 1
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS citas_canceladas,
+                    COUNT(DISTINCT c.paciente_id) AS pacientes,
+                    COUNT(DISTINCT c.medico_id) AS medicos,
+                    (
+                        SELECT COUNT(*)
+                        FROM pago_factura pf
+                        INNER JOIN cita cp ON cp.id = pf.cita_id
+                        WHERE cp.centro_salud_id = :pagos_centro_id
+                          AND pf.fecha_pago >= :pagos_desde
+                          AND pf.fecha_pago < DATE_ADD(
+                              :pagos_hasta,
+                              INTERVAL 1 DAY
+                          )
+                    ) AS total_pagos,
+                    (
+                        SELECT COALESCE(SUM(pf.total), 0)
+                        FROM pago_factura pf
+                        INNER JOIN cita cp ON cp.id = pf.cita_id
+                        WHERE cp.centro_salud_id = :ingresos_centro_id
+                          AND pf.fecha_pago >= :ingresos_desde
+                          AND pf.fecha_pago < DATE_ADD(
+                              :ingresos_hasta,
+                              INTERVAL 1 DAY
+                          )
+                    ) AS ingresos,
+                    (
+                        SELECT COALESCE(AVG(pf.total), 0)
+                        FROM pago_factura pf
+                        INNER JOIN cita cp ON cp.id = pf.cita_id
+                        WHERE cp.centro_salud_id = :promedio_centro_id
+                          AND pf.fecha_pago >= :promedio_desde
+                          AND pf.fecha_pago < DATE_ADD(
+                              :promedio_hasta,
+                              INTERVAL 1 DAY
+                          )
+                    ) AS promedio_pago
+                FROM cita c
+                WHERE c.centro_salud_id = :citas_centro_id
+                  AND c.fecha_hora >= :citas_desde
+                  AND c.fecha_hora < DATE_ADD(
+                      :citas_hasta,
+                      INTERVAL 1 DAY
+                  )";
+
+        $row = parent::obtenerUnRegistro($sql, [
+            'pagos_centro_id' => $centroSaludId,
+            'pagos_desde' => $fechaDesde,
+            'pagos_hasta' => $fechaHasta,
+            'ingresos_centro_id' => $centroSaludId,
+            'ingresos_desde' => $fechaDesde,
+            'ingresos_hasta' => $fechaHasta,
+            'promedio_centro_id' => $centroSaludId,
+            'promedio_desde' => $fechaDesde,
+            'promedio_hasta' => $fechaHasta,
+            'citas_centro_id' => $centroSaludId,
+            'citas_desde' => $fechaDesde,
+            'citas_hasta' => $fechaHasta
+        ]);
+
+        return is_array($row) ? $row : [];
+    }
+
+    /**
+     * Agrupa por estado las citas programadas dentro del periodo reportado.
+     *
+     * Se parte del catalogo de estados para que un estado sin citas tambien
+     * aparezca con cero y el documento mantenga una estructura comparable.
+     */
+    public static function getCitasPorEstadoReporteBI(
+        int $centroSaludId,
+        string $fechaDesde,
+        string $fechaHasta
+    ): array {
+        $sql = "SELECT ec.nombre_estado AS estado, COUNT(c.id) AS total
+                FROM estado_cita ec
+                LEFT JOIN cita c
+                    ON c.estado_id = ec.id
+                   AND c.centro_salud_id = :centro_id
+                   AND c.fecha_hora >= :fecha_desde
+                   AND c.fecha_hora < DATE_ADD(
+                       :fecha_hasta,
+                       INTERVAL 1 DAY
+                   )
+                GROUP BY ec.id, ec.nombre_estado
+                ORDER BY ec.id";
+
+        return parent::obtenerRegistros($sql, [
+            'centro_id' => $centroSaludId,
+            'fecha_desde' => $fechaDesde,
+            'fecha_hasta' => $fechaHasta
+        ]);
+    }
+
+    /**
+     * Mide la carga de cada medico asignado al centro durante el periodo.
+     *
+     * COUNT DISTINCT evita duplicar citas si existen varias asignaciones
+     * historicas del mismo medico. Los medicos activos sin citas permanecen
+     * visibles con total cero para apoyar decisiones de capacidad.
+     */
+    public static function getCargaMedicosReporteBI(
+        int $centroSaludId,
+        string $fechaDesde,
+        string $fechaHasta
+    ): array {
+        $sql = "SELECT
+                    CONCAT(m.nombres, ' ', m.apellidos) AS medico,
+                    e.nombre_especialidad AS especialidad,
+                    COUNT(DISTINCT c.id) AS total_citas,
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN c.estado_id = 3 THEN 1
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS completadas
+                FROM medico_centro_salud mcs
+                INNER JOIN medico m ON m.id = mcs.medico_id
+                INNER JOIN especialidad e ON e.id = m.especialidad_id
+                LEFT JOIN cita c
+                    ON c.medico_id = m.id
+                   AND c.centro_salud_id = :citas_centro_id
+                   AND c.fecha_hora >= :fecha_desde
+                   AND c.fecha_hora < DATE_ADD(
+                       :fecha_hasta,
+                       INTERVAL 1 DAY
+                   )
+                WHERE mcs.centro_salud_id = :asignacion_centro_id
+                  AND mcs.estado = 'ACT'
+                GROUP BY m.id, m.nombres, m.apellidos,
+                         e.nombre_especialidad
+                ORDER BY total_citas DESC, medico ASC";
+
+        return parent::obtenerRegistros($sql, [
+            'citas_centro_id' => $centroSaludId,
+            'fecha_desde' => $fechaDesde,
+            'fecha_hasta' => $fechaHasta,
+            'asignacion_centro_id' => $centroSaludId
+        ]);
+    }
+
+    /**
+     * Obtiene el detalle clinico-operativo para el reporte de citas.
+     *
+     * Solo expone datos necesarios para control administrativo; no incluye
+     * diagnosticos, notas ni otra informacion sensible del expediente.
+     */
+    public static function getCitasDetalleReporteBI(
+        int $centroSaludId,
+        string $fechaDesde,
+        string $fechaHasta
+    ): array {
+        $sql = "SELECT
+                    c.id,
+                    c.fecha_hora,
+                    CONCAT(p.nombres, ' ', p.apellidos) AS paciente,
+                    CONCAT(m.nombres, ' ', m.apellidos) AS medico,
+                    e.nombre_especialidad AS especialidad,
+                    ec.nombre_estado AS estado,
+                    COALESCE(c.consultorio, '') AS consultorio
+                FROM cita c
+                INNER JOIN paciente p ON p.id = c.paciente_id
+                INNER JOIN medico m ON m.id = c.medico_id
+                INNER JOIN especialidad e ON e.id = m.especialidad_id
+                INNER JOIN estado_cita ec ON ec.id = c.estado_id
+                WHERE c.centro_salud_id = :centro_id
+                  AND c.fecha_hora >= :fecha_desde
+                  AND c.fecha_hora < DATE_ADD(
+                      :fecha_hasta,
+                      INTERVAL 1 DAY
+                  )
+                ORDER BY c.fecha_hora DESC, c.id DESC";
+
+        return parent::obtenerRegistros($sql, [
+            'centro_id' => $centroSaludId,
+            'fecha_desde' => $fechaDesde,
+            'fecha_hasta' => $fechaHasta
+        ]);
+    }
+
+    /**
+     * Obtiene los cobros recibidos por el centro dentro del periodo.
+     *
+     * El centro se deriva de la cita relacionada y el filtro cronologico usa
+     * fecha_pago. Asi cada ingreso se atribuye a la sede y fecha correctas.
+     */
+    public static function getPagosDetalleReporteBI(
+        int $centroSaludId,
+        string $fechaDesde,
+        string $fechaHasta
+    ): array {
+        $sql = "SELECT
+                    pf.id,
+                    pf.cita_id,
+                    pf.fecha_pago,
+                    pf.total,
+                    pf.metodo_pago,
+                    pf.id_transaccion_api,
+                    CONCAT(p.nombres, ' ', p.apellidos) AS paciente,
+                    CONCAT(m.nombres, ' ', m.apellidos) AS medico
+                FROM pago_factura pf
+                INNER JOIN cita c ON c.id = pf.cita_id
+                INNER JOIN paciente p ON p.id = c.paciente_id
+                INNER JOIN medico m ON m.id = c.medico_id
+                WHERE c.centro_salud_id = :centro_id
+                  AND pf.fecha_pago >= :fecha_desde
+                  AND pf.fecha_pago < DATE_ADD(
+                      :fecha_hasta,
+                      INTERVAL 1 DAY
+                  )
+                ORDER BY pf.fecha_pago DESC, pf.id DESC";
+
+        return parent::obtenerRegistros($sql, [
+            'centro_id' => $centroSaludId,
+            'fecha_desde' => $fechaDesde,
+            'fecha_hasta' => $fechaHasta
+        ]);
+    }
 }
