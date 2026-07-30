@@ -6,7 +6,7 @@
   <title>{{SITE_TITLE}} | Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{~BASE_DIR}}/public/css/main.css" />
+  <link rel="stylesheet" href="{{~BASE_DIR}}/public/css/main.css?v=20260730-2" />
   {{if FONT_AWESOME_KIT}}
   <script src="https://kit.fontawesome.com/{{FONT_AWESOME_KIT}}.js" crossorigin="anonymous"></script>
   {{endif FONT_AWESOME_KIT}}

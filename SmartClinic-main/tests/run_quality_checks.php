@@ -418,6 +418,20 @@ check(
         && strpos($centerView, 'id="center-status-{{id}}"') !== false,
     'acciones de estado usan formularios POST externos a la tabla'
 );
+check(
+    strpos(
+        $mainCss,
+        'grid-template-columns: minmax(0, 1.15fr) '
+            . 'minmax(150px, 0.85fr) max-content;'
+    ) !== false
+        && strpos($mainCss, 'grid-template-columns: minmax(0, 1fr);')
+            !== false
+        && strpos($mainCss, '.container.health-centers-page {') !== false
+        && strpos($mainCss, '@media (max-width: 1320px)') !== false
+        && strpos($mainCss, '.health-center-card {') !== false
+        && strpos($mainCss, 'max-width: 100%;') !== false,
+    'tarjetas de centros permanecen dentro del directorio'
+);
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS medico_centro_salud') !== false, 'relación médico-centro documentada');
 check(strpos($sql, "'SmartClinic Center'") !== false, 'centro de salud predeterminado documentado');
 check(strpos($sql, "LPAD(m.id, 2, '0')") !== false, 'consultorios iniciales únicos por médico documentados');
@@ -603,6 +617,10 @@ $privateLayout = file_get_contents(__DIR__ . '/../src/Views/templates/privatelay
 $privateNavigation = file_get_contents(__DIR__ . '/../public/js/private-navigation.js');
 check(strpos($privateLayout, 'skip-link') !== false, 'mejora de accesibilidad skip-link presente');
 check(strpos($privateLayout, 'smartclinic-confirm.js') !== false, 'layout carga confirmaciones globales');
+check(
+    strpos($privateLayout, 'main.css?v=20260730-2') !== false,
+    'layout privado invalida cache despues del ajuste responsivo'
+);
 check(
     strpos($privateLayout, 'sidebar-scroll') !== false
         && strpos($privateLayout, 'sidebar-footer') !== false,

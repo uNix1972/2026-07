@@ -135,6 +135,10 @@ Important permission rule:
   on the right; legacy `create` and `edit` GET routes redirect into this page.
 - Existing center types outside the current creation catalog remain selectable
   during editing so saving another field never overwrites historical type data.
+- Directory cards use shrinkable identity and detail columns plus a natural-width
+  action column. They must remain inside the list panel instead of imposing
+  minimum grid widths that overflow narrower desktop workspaces. Medium screens
+  place actions on a second row, while wide screens use the larger page width.
 - Fields: code, name, type, address, city, phone, email, status, and timestamps.
 - Doctors can work at multiple active centers through `medico_centro_salud`.
 - Creating or editing a doctor requires at least one active center and a
