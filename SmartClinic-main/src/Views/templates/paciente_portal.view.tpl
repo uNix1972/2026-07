@@ -27,7 +27,14 @@
       <form method="POST" action="index.php?page=PacientePortalController&action=agendar">
         <input type="hidden" name="csrf_token" value="{{csrf_token}}">
         <input id="portal_paciente_id" type="hidden" value="{{paciente_id}}">
-        <div class="toolbar-field"><label for="medico_id">Médico</label><select id="medico_id" name="medico_id" required>{{foreach medicos}}<option value="{{id}}">{{nombres}} {{apellidos}} - {{nombre_especialidad}}</option>{{endfor medicos}}</select></div>
+        <div class="toolbar-field">
+          <label for="medico_search">Médico</label>
+          <div class="sc-combo" id="medico_combo" data-sc-combo>
+            <input type="text" id="medico_search" class="sc-combo-input" autocomplete="off" placeholder="Buscar médico por nombre o especialidad..." data-sc-combo-input data-options="{{~medicosJsonAttr}}" required>
+            <input type="hidden" id="medico_id" name="medico_id" data-sc-combo-hidden value="">
+            <div class="sc-combo-results" data-sc-combo-results hidden></div>
+          </div>
+        </div>
         <div class="toolbar-field"><label for="centro_salud_id">Centro de salud y consultorio</label><select id="centro_salud_id" name="centro_salud_id" required disabled><option value="">-- Selecciona un centro --</option></select></div>
         <div class="toolbar-field"><label for="fecha">Fecha</label><input id="fecha" type="date" name="fecha" min="{{minDate}}" max="{{maxDate}}" required></div>
         <div class="toolbar-field"><label for="hora">Hora</label><select id="hora" name="hora" required disabled><option value="">-- Selecciona una hora --</option></select></div>
@@ -87,18 +94,66 @@
     {{ifnot expedientes}}<p>Aún no tiene citas registradas.</p>{{endifnot expedientes}}
   </section>
 </div>
+<style>
+  /* Barra de búsqueda con autocompletar (Médico), mismo componente que ya
+     se usa en Inventario/Kárdex y en el módulo de Citas del admin.
+     Ver public/js/kardex-autocomplete.js para el comportamiento. */
+  .sc-combo { position: relative; }
+  .sc-combo-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #C7C7CC;
+    border-radius: 8px;
+    font: inherit;
+    box-sizing: border-box;
+  }
+  .sc-combo-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 20;
+  }
+  .sc-combo-option {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: .95rem;
+    color: #111827;
+  }
+  .sc-combo-option:hover,
+  .sc-combo-option.is-active {
+    background: #EAF5FD;
+  }
+  .sc-combo-empty {
+    padding: 10px 14px;
+    color: #64748b;
+    font-size: .9rem;
+  }
+</style>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  var medicoSelect = document.getElementById('medico_id');
+  var medicoCombo = document.getElementById('medico_combo');
+  var medicoSearch = document.getElementById('medico_search');
+  var medicoIdInput = document.getElementById('medico_id');
   var centroSelect = document.getElementById('centro_salud_id');
   var pacienteId = document.getElementById('portal_paciente_id');
   var fechaInput = document.getElementById('fecha');
   var horaSelect = document.getElementById('hora');
 
   function refreshCenters() {
-    if (!medicoSelect || !centroSelect) return;
+    if (!medicoIdInput || !centroSelect) return;
     centroSelect.disabled = true;
-    fetch('index.php?page=CitasController&action=availableCenters&medico_id=' + encodeURIComponent(medicoSelect.value))
+    if (!medicoIdInput.value) {
+      centroSelect.innerHTML = '<option value="">-- Selecciona un centro --</option>';
+      return;
+    }
+    fetch('index.php?page=CitasController&action=availableCenters&medico_id=' + encodeURIComponent(medicoIdInput.value))
       .then(function (response) { return response.json(); })
       .then(function (data) {
         centroSelect.innerHTML = '<option value="">-- Selecciona un centro --</option>';
@@ -116,12 +171,12 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function refreshTimes() {
-    if (!medicoSelect || !pacienteId || !fechaInput || !horaSelect) return;
+    if (!medicoIdInput || !pacienteId || !fechaInput || !horaSelect) return;
     horaSelect.disabled = true;
     horaSelect.innerHTML = '<option value="">-- Selecciona una hora --</option>';
-    if (!medicoSelect.value || !fechaInput.value) return;
+    if (!medicoIdInput.value || !fechaInput.value) return;
 
-    fetch('index.php?page=CitasController&action=availableTimes&medico_id=' + encodeURIComponent(medicoSelect.value) + '&paciente_id=' + encodeURIComponent(pacienteId.value) + '&fecha=' + encodeURIComponent(fechaInput.value))
+    fetch('index.php?page=CitasController&action=availableTimes&medico_id=' + encodeURIComponent(medicoIdInput.value) + '&paciente_id=' + encodeURIComponent(pacienteId.value) + '&fecha=' + encodeURIComponent(fechaInput.value))
       .then(function (response) { return response.json(); })
       .then(function (data) {
         data.forEach(function (item) {
@@ -137,11 +192,28 @@ document.addEventListener('DOMContentLoaded', function () {
       });
   }
 
-  medicoSelect && medicoSelect.addEventListener('change', function () {
+  function actualizarValidezMedico() {
+    if (!medicoSearch || !medicoIdInput) return;
+    if (!medicoIdInput.value || parseInt(medicoIdInput.value, 10) <= 0) {
+      medicoSearch.setCustomValidity('Selecciona un médico de la lista de resultados.');
+    } else {
+      medicoSearch.setCustomValidity('');
+    }
+  }
+
+  medicoCombo && medicoCombo.addEventListener('sc-combo:select', function () {
+    actualizarValidezMedico();
+    refreshCenters();
+    refreshTimes();
+  });
+  medicoCombo && medicoCombo.addEventListener('sc-combo:clear', function () {
+    actualizarValidezMedico();
     refreshCenters();
     refreshTimes();
   });
   fechaInput && fechaInput.addEventListener('change', refreshTimes);
+
+  actualizarValidezMedico();
   refreshCenters();
   refreshTimes();
 });

@@ -81,13 +81,13 @@
             <input type="hidden" name="page" value="InventarioController" />
             <input type="hidden" name="action" value="kardex" />
             <div class="toolbar-row">
-                <div class="toolbar-field sc-combo" data-sc-combo>
+                <div class="toolbar-field sc-combo" data-sc-combo data-sc-combo-submit-on-enter>
                     <label for="producto_search">Producto</label>
                     <input type="text" id="producto_search" class="sc-combo-input" autocomplete="off" placeholder="Buscar producto..." value="{{productoNombreSeleccionado}}" data-sc-combo-input data-options="{{~productosJsonAttr}}" />
                     <input type="hidden" name="producto_id" data-sc-combo-hidden value="{{productoIdSeleccionadoValue}}" />
                     <div class="sc-combo-results" data-sc-combo-results hidden></div>
                 </div>
-                <div class="toolbar-field sc-combo" data-sc-combo>
+                <div class="toolbar-field sc-combo" data-sc-combo data-sc-combo-submit-on-enter>
                     <label for="centro_search">Centro de salud</label>
                     <input type="text" id="centro_search" class="sc-combo-input" autocomplete="off" placeholder="Buscar centro..." value="{{centroNombreSeleccionado}}" data-sc-combo-input data-options="{{~centrosJsonAttr}}" />
                     <input type="hidden" name="centro_salud_id" data-sc-combo-hidden value="{{centroIdSeleccionadoValue}}" />

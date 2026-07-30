@@ -95,7 +95,7 @@
             <input type="hidden" name="page" value="InventarioController">
             <input type="hidden" name="action" value="index">
             <input type="hidden" name="centro_salud_id" value="{{centroSaludId}}">
-            <div class="sc-combo" data-sc-combo style="min-width:280px; flex:1 1 280px;">
+            <div class="sc-combo" data-sc-combo data-sc-combo-submit-on-enter style="min-width:280px; flex:1 1 280px;">
                 <label for="producto_buscador" style="display:block; font-size:.85rem; color:#334155; margin-bottom:4px;">Buscar producto</label>
                 <input type="text" id="producto_buscador" name="q" class="sc-combo-input" autocomplete="off" placeholder="Escribe el nombre del producto..." value="{{productoBuscadoNombre}}" data-sc-combo-input data-options="{{~productosJsonAttr}}">
                 <input type="hidden" name="producto_id" data-sc-combo-hidden value="{{productoBuscadoIdValue}}">
@@ -238,7 +238,7 @@
             <input type="hidden" name="page" value="InventarioController">
             <input type="hidden" name="action" value="index">
             <input type="hidden" name="centro_salud_id" value="{{centroSaludId}}">
-            <div class="sc-combo" data-sc-combo style="min-width:240px; flex:1 1 240px;">
+            <div class="sc-combo" data-sc-combo data-sc-combo-submit-on-enter style="min-width:240px; flex:1 1 240px;">
                 <label for="mov_producto_buscador" style="display:block; font-size:.85rem; color:#334155; margin-bottom:4px;">Producto</label>
                 <input type="text" id="mov_producto_buscador" name="mov_q" class="sc-combo-input" autocomplete="off" placeholder="Buscar producto..." value="{{movProductoBuscadoNombre}}" data-sc-combo-input data-options="{{~productosJsonAttrMov}}">
                 <input type="hidden" name="mov_producto_id" data-sc-combo-hidden value="{{movProductoBuscadoIdValue}}">

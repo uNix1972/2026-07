@@ -137,6 +137,8 @@ class CitasController extends PublicController
 
     private function agendar(): void
     {
+        Site::addEndScript('public/js/kardex-autocomplete.js');
+
         $defaults = [
             'paciente_id' => 0,
             'medico_id' => 0,
@@ -175,11 +177,11 @@ class CitasController extends PublicController
 
             if (!Security::validateCsrfPost()) {
                 Renderer::render('cita_agendar', array_merge($defaults, [
-                    'medicos' => $this->buildMedicos($medicoId ?? 0),
-                    'pacientes' => $this->buildPacientes($pacienteId ?? 0),
                     'centros' =>
                         $this->buildCentros($medicoId ?? 0, $centroSaludId ?? 0),
                     'error' => 'Solicitud inválida o expirada. Recargue la página e intente nuevamente.',
+                    ...$this->buildComboDataMedicos($medicoId ?? 0),
+                    ...$this->buildComboDataPacientes($pacienteId ?? 0),
                 ]));
                 return;
             }
@@ -192,11 +194,11 @@ class CitasController extends PublicController
                 || $hora === null
             ) {
                 Renderer::render('cita_agendar', array_merge($defaults, [
-                    'medicos' => $this->buildMedicos($medicoId ?? 0),
-                    'pacientes' => $this->buildPacientes($pacienteId ?? 0),
                     'centros' =>
                         $this->buildCentros($medicoId ?? 0, $centroSaludId ?? 0),
                     'error' => 'Datos inválidos. Verifique todos los campos.',
+                    ...$this->buildComboDataMedicos($medicoId ?? 0),
+                    ...$this->buildComboDataPacientes($pacienteId ?? 0),
                 ]));
                 return;
             }
@@ -213,10 +215,10 @@ class CitasController extends PublicController
             );
             if ($errorMessage !== null) {
                 Renderer::render('cita_agendar', array_merge($defaults, [
-                    'medicos' => $this->buildMedicos($medicoId),
-                    'pacientes' => $this->buildPacientes($pacienteId),
                     'centros' => $this->buildCentros($medicoId, $centroSaludId),
                     'error' => $errorMessage,
+                    ...$this->buildComboDataMedicos($medicoId),
+                    ...$this->buildComboDataPacientes($pacienteId),
                 ]));
                 return;
             }
@@ -228,12 +230,12 @@ class CitasController extends PublicController
                 );
             if (!$appointmentLocation) {
                 Renderer::render('cita_agendar', array_merge($defaults, [
-                    'medicos' => $this->buildMedicos($medicoId),
-                    'pacientes' => $this->buildPacientes($pacienteId),
                     'centros' =>
                         $this->buildCentros($medicoId, $centroSaludId),
                     'error' =>
                         'La asignación del médico cambió. Seleccione nuevamente el centro.',
+                    ...$this->buildComboDataMedicos($medicoId),
+                    ...$this->buildComboDataPacientes($pacienteId),
                 ]));
                 return;
             }
@@ -284,9 +286,9 @@ class CitasController extends PublicController
         }
 
         Renderer::render('cita_agendar', array_merge($defaults, [
-            'medicos' => $this->buildMedicos(),
-            'pacientes' => $this->buildPacientes(),
             'centros' => [],
+            ...$this->buildComboDataMedicos(),
+            ...$this->buildComboDataPacientes(),
         ]));
     }
 
@@ -310,6 +312,8 @@ class CitasController extends PublicController
 
     private function edit(): void
     {
+        Site::addEndScript('public/js/kardex-autocomplete.js');
+
         $this->authorizeCitas();
         $this->autoCancelPendingAppointments();
 
@@ -384,26 +388,12 @@ class CitasController extends PublicController
                     );
                 }
                 if ($errorMessage !== null) {
-                    $medicos = DaoMedicos::getAllMedicos();
-                    foreach ($medicos as &$medicoItem) {
-                        $medicoItem['selected'] = intval($medicoItem['id']) === $medicoId;
-                    }
-                    unset($medicoItem);
-
-                    $pacientes = DaoPacientes::getAllPacientes();
-                    foreach ($pacientes as &$pacienteItem) {
-                        $pacienteItem['selected'] = intval($pacienteItem['id']) === $pacienteId;
-                    }
-                    unset($pacienteItem);
-
                     $estados = $this->buildEstadosOptions($estadoId);
 
                     Renderer::render('cita_edit', [
                         'cita_id' => $id,
                         'fecha' => $fecha,
                         'hora' => $hora,
-                        'medicos' => $medicos,
-                        'pacientes' => $pacientes,
                         'centros' =>
                             $this->buildCentros($medicoId, $centroSaludId),
                         'estados' => $estados,
@@ -418,6 +408,8 @@ class CitasController extends PublicController
                         'maxDate' => $this->getMaxDate(),
                         'modo_lectura' => $modoLectura,
                         'error' => $errorMessage,
+                        ...$this->buildComboDataMedicos($medicoId),
+                        ...$this->buildComboDataPacientes($pacienteId),
                     ]);
 
                     return;
@@ -429,12 +421,12 @@ class CitasController extends PublicController
                         $centroSaludId
                     );
                 if (!$appointmentLocation) {
+                    $estados = $this->buildEstadosOptions($estadoId);
+
                     Renderer::render('cita_edit', [
                         'cita_id' => $id,
                         'fecha' => $fecha,
                         'hora' => $hora,
-                        'medicos' => $medicos,
-                        'pacientes' => $pacientes,
                         'centros' =>
                             $this->buildCentros($medicoId, $centroSaludId),
                         'estados' => $estados,
@@ -450,6 +442,8 @@ class CitasController extends PublicController
                         'modo_lectura' => $modoLectura,
                         'error' =>
                             'La asignación del médico cambió. Seleccione nuevamente el centro.',
+                        ...$this->buildComboDataMedicos($medicoId),
+                        ...$this->buildComboDataPacientes($pacienteId),
                     ]);
                     return;
                 }
@@ -518,26 +512,12 @@ class CitasController extends PublicController
             }
         }
 
-        $medicos = DaoMedicos::getAllMedicos();
-        foreach ($medicos as &$medicoItem) {
-            $medicoItem['selected'] = intval($medicoItem['id']) === intval($cita['medico_id']);
-        }
-        unset($medicoItem);
-
-        $pacientes = DaoPacientes::getAllPacientes();
-        foreach ($pacientes as &$pacienteItem) {
-            $pacienteItem['selected'] = intval($pacienteItem['id']) === intval($cita['paciente_id']);
-        }
-        unset($pacienteItem);
-
         $estados = $this->buildEstadosOptions(intval($cita['estado_id']));
 
         Renderer::render('cita_edit', [
             'cita_id' => intval($cita['id']),
             'fecha' => $fecha,
             'hora' => $hora,
-            'medicos' => $medicos,
-            'pacientes' => $pacientes,
             'centros' => $this->buildCentros(
                 intval($cita['medico_id']),
                 intval($cita['centro_salud_id'])
@@ -556,6 +536,8 @@ class CitasController extends PublicController
             'error' => isset($_GET['csrf'])
                 ? 'Solicitud inválida o expirada. Recargue la página e intente nuevamente.'
                 : (isset($_GET['error']) ? 'Datos inválidos. Verifique los campos.' : ''),
+            ...$this->buildComboDataMedicos(intval($cita['medico_id'])),
+            ...$this->buildComboDataPacientes(intval($cita['paciente_id'])),
         ]);
     }
 
@@ -756,26 +738,89 @@ class CitasController extends PublicController
         return $estados;
     }
 
-    private function buildMedicos(int $selectedId = 0): array
+    /**
+     * Convierte pacientes/médicos al formato {id, nombre} (más "telefono"
+     * para pacientes) que necesita la barra de búsqueda con autocompletar
+     * (kardex-autocomplete.js), reusando exactamente el mismo componente
+     * que ya se usa en Inventario/Kárdex.
+     */
+    private function mapearPacientesParaBuscador(array $pacientes): array
     {
-        $medicos = DaoMedicos::getAllMedicos();
-        foreach ($medicos as &$medico) {
-            $medico['selected'] = intval($medico['id']) === $selectedId;
-        }
-        unset($medico);
-
-        return $medicos;
+        return array_map(function ($p) {
+            return [
+                'id' => (int) $p['id'],
+                'nombre' => trim($p['nombres'] . ' ' . $p['apellidos'])
+                    . ' (' . $p['identidad'] . ')',
+                'telefono' => (string) ($p['telefono'] ?? ''),
+            ];
+        }, $pacientes);
     }
 
-    private function buildPacientes(int $selectedId = 0): array
+    private function mapearMedicosParaBuscador(array $medicos): array
     {
-        $pacientes = DaoPacientes::getAllPacientes();
-        foreach ($pacientes as &$paciente) {
-            $paciente['selected'] = intval($paciente['id']) === $selectedId;
-        }
-        unset($paciente);
+        return array_map(function ($m) {
+            return [
+                'id' => (int) $m['id'],
+                'nombre' => 'Dr/a ' . trim($m['nombres'] . ' ' . $m['apellidos'])
+                    . ' - ' . $m['nombre_especialidad'],
+            ];
+        }, $medicos);
+    }
 
-        return $pacientes;
+    /**
+     * Convierte una lista ya mapeada a un texto JSON listo para meterse
+     * como atributo HTML (data-options), escapado porque el motor de
+     * plantillas de este proyecto no escapa lo que imprime automáticamente.
+     */
+    private function jsonAttrParaAutocompletar(array $opciones): string
+    {
+        return htmlspecialchars(json_encode($opciones, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+    }
+
+    private function buscarOpcionPorId(array $opcionesMapeadas, int $id): ?array
+    {
+        foreach ($opcionesMapeadas as $opcion) {
+            if ($opcion['id'] === $id) {
+                return $opcion;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Junta todo lo que las plantillas necesitan para pintar el buscador
+     * de Paciente: la lista completa en JSON (para filtrar en el
+     * navegador) y, si ya hay uno seleccionado (al reabrir el formulario
+     * tras un error, o al editar una cita existente), su nombre y
+     * teléfono ya resueltos para precargar el campo de texto.
+     */
+    private function buildComboDataPacientes(int $selectedId = 0): array
+    {
+        $mapeados = $this->mapearPacientesParaBuscador(DaoPacientes::getAllPacientes());
+        $seleccionado = $selectedId > 0
+            ? $this->buscarOpcionPorId($mapeados, $selectedId)
+            : null;
+
+        return [
+            'pacientesJsonAttr' => $this->jsonAttrParaAutocompletar($mapeados),
+            'pacienteIdSeleccionadoValue' => $seleccionado ? $seleccionado['id'] : 0,
+            'pacienteNombreSeleccionado' => $seleccionado ? $seleccionado['nombre'] : '',
+            'pacienteTelefonoSeleccionado' => $seleccionado ? $seleccionado['telefono'] : '',
+        ];
+    }
+
+    private function buildComboDataMedicos(int $selectedId = 0): array
+    {
+        $mapeados = $this->mapearMedicosParaBuscador(DaoMedicos::getAllMedicos());
+        $seleccionado = $selectedId > 0
+            ? $this->buscarOpcionPorId($mapeados, $selectedId)
+            : null;
+
+        return [
+            'medicosJsonAttr' => $this->jsonAttrParaAutocompletar($mapeados),
+            'medicoIdSeleccionadoValue' => $seleccionado ? $seleccionado['id'] : 0,
+            'medicoNombreSeleccionado' => $seleccionado ? $seleccionado['nombre'] : '',
+        ];
     }
 
     private function buildCentros(int $medicoId, int $selectedId = 0): array

@@ -32,6 +32,12 @@
     var input = root.querySelector("[data-sc-combo-input]");
     var hidden = root.querySelector("[data-sc-combo-hidden]");
     var resultsBox = root.querySelector("[data-sc-combo-results]");
+    // Solo los buscadores de FILTRO (Kárdex/Inventario) deben enviar el
+    // formulario apenas se elige una opción con Enter. En formularios con
+    // varios campos (como Agendar/Editar cita) eso enviaría la cita a
+    // medio llenar, así que ahí NO se agrega este atributo y Enter solo
+    // selecciona la opción sin enviar nada.
+    var enviarAlPresionarEnter = root.hasAttribute("data-sc-combo-submit-on-enter");
 
     if (!input || !hidden || !resultsBox) {
       return;
@@ -58,10 +64,17 @@
       input.value = opcion.nombre;
       hidden.value = opcion.id;
       cerrarResultados();
+      // Evento para que otros scripts de la pantalla (por ejemplo, mostrar
+      // el teléfono de un paciente elegido) reaccionen a la selección sin
+      // tener que conocer los detalles internos de este componente.
+      root.dispatchEvent(
+        new CustomEvent("sc-combo:select", { detail: opcion, bubbles: true })
+      );
     }
 
     function limpiarSeleccion() {
       hidden.value = "";
+      root.dispatchEvent(new CustomEvent("sc-combo:clear", { bubbles: true }));
     }
 
     function resaltar(indice) {
@@ -182,9 +195,11 @@
       if (elegida) {
         event.preventDefault();
         elegirOpcion(elegida);
-        var form = root.closest("form");
-        if (form) {
-          form.submit();
+        if (enviarAlPresionarEnter) {
+          var form = root.closest("form");
+          if (form) {
+            form.submit();
+          }
         }
       }
       // Si no hubo ninguna coincidencia, se deja que Enter envíe el

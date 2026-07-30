@@ -47,6 +47,7 @@ class PacientePortalController extends PrivateController
     private function index(): void
     {
         Site::addLink('public/css/clinical-record.css');
+        Site::addEndScript('public/js/kardex-autocomplete.js');
         Clinica::autoCancelarPendientesVencidas();
         $paciente = $this->getPaciente();
 
@@ -107,12 +108,41 @@ class PacientePortalController extends PrivateController
             'fecha_hasta' => $fechaHasta ?? '',
             'historial' => Clinica::getHistorialPaciente(intval($paciente['id'])),
             'recetas' => Clinica::getRecetasPaciente(intval($paciente['id'])),
-            'medicos' => DaoMedicos::getAllMedicos(),
+            'medicosJsonAttr' => $this->jsonAttrParaAutocompletar(
+                $this->mapearMedicosParaBuscador(DaoMedicos::getAllMedicos())
+            ),
             'csrf_token' => Security::getCsrfToken(),
             'minDate' => date('Y-m-d'),
             'maxDate' => (new \DateTime())->add(new \DateInterval('P3M'))->format('Y-m-d'),
             'msg' => $_GET['msg'] ?? '',
         ]);
+    }
+
+    /**
+     * Convierte médicos al formato {id, nombre} que necesita la barra de
+     * búsqueda con autocompletar (kardex-autocomplete.js), el mismo
+     * componente que ya se usa en Inventario/Kárdex y en el módulo de
+     * Citas del admin.
+     */
+    private function mapearMedicosParaBuscador(array $medicos): array
+    {
+        return array_map(function ($m) {
+            return [
+                'id' => (int) $m['id'],
+                'nombre' => 'Dr/a ' . trim($m['nombres'] . ' ' . $m['apellidos'])
+                    . ' - ' . $m['nombre_especialidad'],
+            ];
+        }, $medicos);
+    }
+
+    /**
+     * Convierte una lista ya mapeada a un texto JSON listo para meterse
+     * como atributo HTML (data-options), escapado porque el motor de
+     * plantillas de este proyecto no escapa lo que imprime automáticamente.
+     */
+    private function jsonAttrParaAutocompletar(array $opciones): string
+    {
+        return htmlspecialchars(json_encode($opciones, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
     }
 
     /**

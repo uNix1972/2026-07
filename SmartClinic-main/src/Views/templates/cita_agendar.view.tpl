@@ -15,13 +15,12 @@
       <input type="hidden" name="csrf_token" value="{{csrf_token}}">
       <input id="notify_patient" type="hidden" name="notify_patient" value="0">
       <div class="form-group">
-        <label for="paciente_id">Paciente</label>
-        <select id="paciente_id" name="paciente_id" required>
-          <option value="">-- Selecciona un paciente --</option>
-          {{foreach pacientes}}
-          <option value="{{id}}" data-telefono="{{telefono}}" {{if selected}}selected{{endif selected}}>{{nombres}} {{apellidos}} ({{identidad}})</option>
-          {{endfor pacientes}}
-        </select>
+        <label for="paciente_search">Paciente</label>
+        <div class="sc-combo" id="paciente_combo" data-sc-combo>
+          <input type="text" id="paciente_search" class="sc-combo-input" autocomplete="off" placeholder="Buscar paciente por nombre o identidad..." value="{{pacienteNombreSeleccionado}}" data-sc-combo-input data-options="{{~pacientesJsonAttr}}" required>
+          <input type="hidden" id="paciente_id" name="paciente_id" data-sc-combo-hidden data-telefono-inicial="{{pacienteTelefonoSeleccionado}}" value="{{pacienteIdSeleccionadoValue}}">
+          <div class="sc-combo-results" data-sc-combo-results hidden></div>
+        </div>
         <div style="margin-top:8px;padding:10px 12px;background:#F8FAFC;border-left:3px solid #0260CB;color:#334155;">
           Teléfono para notificación:
           <strong id="patient_notification_phone">Selecciona un paciente</strong>
@@ -29,13 +28,12 @@
       </div>
 
       <div class="form-group">
-        <label for="medico_id">Médico</label>
-        <select id="medico_id" name="medico_id" required>
-          <option value="">-- Selecciona un médico --</option>
-          {{foreach medicos}}
-          <option value="{{id}}" {{if selected}}selected{{endif selected}}>Dr/a {{nombres}} {{apellidos}} - {{nombre_especialidad}}</option>
-          {{endfor medicos}}
-        </select>
+        <label for="medico_search">Médico</label>
+        <div class="sc-combo" id="medico_combo" data-sc-combo>
+          <input type="text" id="medico_search" class="sc-combo-input" autocomplete="off" placeholder="Buscar médico por nombre o especialidad..." value="{{medicoNombreSeleccionado}}" data-sc-combo-input data-options="{{~medicosJsonAttr}}" required>
+          <input type="hidden" id="medico_id" name="medico_id" data-sc-combo-hidden value="{{medicoIdSeleccionadoValue}}">
+          <div class="sc-combo-results" data-sc-combo-results hidden></div>
+        </div>
       </div>
 
       <div class="form-group">
@@ -98,12 +96,56 @@
   #appointment_confirmation::backdrop {
     background: rgba(15, 23, 42, 0.55);
   }
+
+  /* Barra de búsqueda con autocompletar (Paciente / Médico), mismo
+     componente que ya se usa en Inventario/Kárdex.
+     Ver public/js/kardex-autocomplete.js para el comportamiento. */
+  .sc-combo { position: relative; }
+  .sc-combo-input {
+    width: 100%;
+    padding: 0.95rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 1rem;
+    font: inherit;
+    box-sizing: border-box;
+  }
+  .sc-combo-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 20;
+  }
+  .sc-combo-option {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: .95rem;
+    color: #111827;
+  }
+  .sc-combo-option:hover,
+  .sc-combo-option.is-active {
+    background: #EAF5FD;
+  }
+  .sc-combo-empty {
+    padding: 10px 14px;
+    color: #64748b;
+    font-size: .9rem;
+  }
 </style>
 
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     var appointmentForm = document.getElementById('appointment_form');
-    var pacienteSelect = document.querySelector('select[name="paciente_id"]');
+    var pacienteCombo = document.getElementById('paciente_combo');
+    var pacienteSearch = document.getElementById('paciente_search');
+    var pacienteIdInput = document.getElementById('paciente_id');
     var patientPhone = document.getElementById('patient_notification_phone');
     var notifyInput = document.getElementById('notify_patient');
     var confirmationDialog = document.getElementById('appointment_confirmation');
@@ -111,17 +153,23 @@
     var notifyChoice = document.getElementById('notify_patient_choice');
     var cancelConfirmation = document.getElementById('cancel_appointment_confirmation');
     var confirmCreation = document.getElementById('confirm_appointment_creation');
-    var medicoSelect = document.querySelector('select[name="medico_id"]');
+    var medicoCombo = document.getElementById('medico_combo');
+    var medicoSearch = document.getElementById('medico_search');
+    var medicoIdInput = document.getElementById('medico_id');
     var centroSelect = document.querySelector('select[name="centro_salud_id"]');
     var fechaInput = document.querySelector('input[name="fecha"]');
     var horaSelect = document.querySelector('select[name="hora"]');
 
-    function refreshPatientPhone() {
-      if (!pacienteSelect || !patientPhone || !notifyChoice) return;
+    function refreshPatientPhone(telefono) {
+      if (!patientPhone || !notifyChoice) return;
 
-      var selectedOption = pacienteSelect.options[pacienteSelect.selectedIndex];
-      var phone = selectedOption ? (selectedOption.getAttribute('data-telefono') || '').trim() : '';
-      patientPhone.textContent = phone || (pacienteSelect.value ? 'Sin teléfono registrado' : 'Selecciona un paciente');
+      if (typeof telefono === 'undefined') {
+        telefono = pacienteIdInput && pacienteIdInput.value
+          ? (pacienteIdInput.getAttribute('data-telefono-inicial') || '').trim()
+          : '';
+      }
+      var phone = (telefono || '').trim();
+      patientPhone.textContent = phone || (pacienteIdInput && pacienteIdInput.value ? 'Sin teléfono registrado' : 'Selecciona un paciente');
       if (confirmationPhone) {
         confirmationPhone.textContent = phone || 'sin teléfono registrado';
       }
@@ -132,16 +180,16 @@
     }
 
     function refreshCenters(resetSelection) {
-      if (!medicoSelect || !centroSelect) return;
+      if (!medicoIdInput || !centroSelect) return;
 
       var currentValue = resetSelection ? '' : centroSelect.value;
       centroSelect.disabled = true;
-      if (!medicoSelect.value) {
+      if (!medicoIdInput.value) {
         centroSelect.innerHTML = '<option value="">-- Selecciona un centro --</option>';
         return;
       }
 
-      fetch('index.php?page=CitasController&action=availableCenters&medico_id=' + encodeURIComponent(medicoSelect.value))
+      fetch('index.php?page=CitasController&action=availableCenters&medico_id=' + encodeURIComponent(medicoIdInput.value))
         .then(function (response) { return response.json(); })
         .then(function (data) {
           centroSelect.innerHTML = '<option value="">-- Selecciona un centro --</option>';
@@ -160,10 +208,10 @@
     }
 
     function refreshTimes() {
-      if (!medicoSelect || !fechaInput || !horaSelect) return;
-      if (!medicoSelect.value || !fechaInput.value) return;
+      if (!medicoIdInput || !fechaInput || !horaSelect) return;
+      if (!medicoIdInput.value || !fechaInput.value) return;
 
-      fetch('index.php?page=CitasController&action=availableTimes&medico_id=' + encodeURIComponent(medicoSelect.value) + '&paciente_id=' + encodeURIComponent(pacienteSelect ? pacienteSelect.value : '') + '&fecha=' + encodeURIComponent(fechaInput.value))
+      fetch('index.php?page=CitasController&action=availableTimes&medico_id=' + encodeURIComponent(medicoIdInput.value) + '&paciente_id=' + encodeURIComponent(pacienteIdInput ? pacienteIdInput.value : '') + '&fecha=' + encodeURIComponent(fechaInput.value))
         .then(function (response) { return response.json(); })
         .then(function (data) {
           var currentValue = horaSelect.value;
@@ -180,18 +228,42 @@
         });
     }
 
-    medicoSelect && medicoSelect.addEventListener('change', function () {
+    function actualizarValidezCombo(searchInput, hiddenInput, mensaje) {
+      if (!searchInput || !hiddenInput) return;
+      if (!hiddenInput.value || parseInt(hiddenInput.value, 10) <= 0) {
+        searchInput.setCustomValidity(mensaje);
+      } else {
+        searchInput.setCustomValidity('');
+      }
+    }
+
+    medicoCombo && medicoCombo.addEventListener('sc-combo:select', function () {
+      actualizarValidezCombo(medicoSearch, medicoIdInput, 'Selecciona un médico de la lista de resultados.');
       refreshCenters(true);
       refreshTimes();
     });
-    pacienteSelect && pacienteSelect.addEventListener('change', function () {
-      refreshPatientPhone();
+    medicoCombo && medicoCombo.addEventListener('sc-combo:clear', function () {
+      actualizarValidezCombo(medicoSearch, medicoIdInput, 'Selecciona un médico de la lista de resultados.');
+      refreshCenters(true);
+      refreshTimes();
+    });
+    pacienteCombo && pacienteCombo.addEventListener('sc-combo:select', function (event) {
+      actualizarValidezCombo(pacienteSearch, pacienteIdInput, 'Selecciona un paciente de la lista de resultados.');
+      refreshPatientPhone(event.detail && event.detail.telefono);
+      refreshTimes();
+    });
+    pacienteCombo && pacienteCombo.addEventListener('sc-combo:clear', function () {
+      actualizarValidezCombo(pacienteSearch, pacienteIdInput, 'Selecciona un paciente de la lista de resultados.');
+      refreshPatientPhone('');
       refreshTimes();
     });
     fechaInput && fechaInput.addEventListener('change', refreshTimes);
 
     appointmentForm && appointmentForm.addEventListener('submit', function (event) {
       event.preventDefault();
+
+      actualizarValidezCombo(pacienteSearch, pacienteIdInput, 'Selecciona un paciente de la lista de resultados.');
+      actualizarValidezCombo(medicoSearch, medicoIdInput, 'Selecciona un médico de la lista de resultados.');
 
       if (!appointmentForm.checkValidity()) {
         appointmentForm.reportValidity();
@@ -212,6 +284,8 @@
       appointmentForm.submit();
     });
 
+    actualizarValidezCombo(pacienteSearch, pacienteIdInput, 'Selecciona un paciente de la lista de resultados.');
+    actualizarValidezCombo(medicoSearch, medicoIdInput, 'Selecciona un médico de la lista de resultados.');
     refreshPatientPhone();
     refreshCenters(false);
     refreshTimes();
