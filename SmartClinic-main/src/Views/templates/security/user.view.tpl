@@ -9,12 +9,28 @@
   .error { color: #c0392b; font-size: 0.85rem; background: #fdecea; padding: 0.4rem 0.7rem; border-radius: 8px; }
   .self-note { color: #7a6033; font-size: 0.82rem; background: #fdf6e3; border: 1px solid #e8d5a0; padding: 0.35rem 0.7rem; border-radius: 8px; }
   .roles-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
-  .role-option { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0.7rem; align-items: start; border: 1px solid #d7e2f0; border-radius: 8px; padding: 0.85rem; background: #f8fbff; cursor: pointer; }
-  .role-option:has(input:checked) { border-color: #0b5fc6; background: #eef6ff; box-shadow: 0 0 0 2px rgba(11,95,198,0.1); }
-  .role-option:has(input:disabled) { cursor: not-allowed; opacity: 0.75; }
-  .role-option input { width: 18px; height: 18px; margin: 0.1rem 0 0; accent-color: #0b5fc6; }
-  .role-option strong { display: block; color: #082b5c; font-size: 0.92rem; }
-  .role-option small { display: block; color: #5f6f83; font-size: 0.8rem; line-height: 1.35; margin-top: 0.2rem; }
+  .role-option { min-width:0; border:1px solid #d7e2f0; border-radius:8px; background:#f8fbff; overflow:hidden; }
+  .role-option:has(.role-checkbox:checked) { border-color:#0b5fc6; background:#eef6ff; box-shadow:0 0 0 2px rgba(11,95,198,.1); }
+  .role-option-select { display:grid; grid-template-columns:20px minmax(0,1fr); gap:.7rem; align-items:start; padding:.85rem; cursor:pointer; }
+  .role-option-select:has(input:disabled) { cursor:not-allowed; opacity:.72; }
+  .role-checkbox { width:18px; height:18px; margin:.1rem 0 0; accent-color:#0b5fc6; }
+  .role-option-select strong { display:block; color:#082b5c; font-size:.92rem; }
+  .role-option-select small { display:block; color:#5f6f83; font-size:.8rem; line-height:1.35; margin-top:.2rem; }
+  .role-access { border-top:1px solid #d7e2f0; background:#fff; }
+  .role-access summary { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.62rem .85rem; color:#0b4fb3; font-size:.8rem; font-weight:750; cursor:pointer; list-style:none; }
+  .role-access summary::-webkit-details-marker { display:none; }
+  .role-access summary::after { content:"+"; font-size:1rem; line-height:1; }
+  .role-access[open] summary::after { content:"−"; }
+  .role-access-count { display:inline-flex; align-items:center; min-height:22px; padding:0 .48rem; border-radius:999px; background:#eaf2ff; color:#084aa4; font-size:.7rem; }
+  .role-access-body { padding:.15rem .85rem .8rem; }
+  .role-access-note { color:#17655f; background:#ecfbf8; border-left:3px solid #0b7a75; padding:.5rem .6rem; margin:.25rem 0 .55rem; font-size:.76rem; }
+  .role-access-list { list-style:none; padding:0; margin:0; display:grid; gap:.38rem; }
+  .role-access-item { display:grid; grid-template-columns:auto minmax(0,1fr); gap:.45rem; align-items:start; color:#34445b; font-size:.76rem; line-height:1.35; }
+  .access-kind { display:inline-flex; align-items:center; min-height:19px; padding:0 .38rem; border-radius:4px; font-size:.63rem; font-weight:800; text-transform:uppercase; }
+  .access-kind--menu { background:#e9f7f4; color:#0b6b63; }
+  .access-kind--module { background:#edf2ff; color:#264db5; }
+  .access-kind--action { background:#fff4df; color:#8a5a00; }
+  .role-access-empty { color:#7a8698; font-size:.76rem; margin:.25rem 0; }
   .form-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem; }
   .btn-confirmar { background: var(--dorado); color: #fff; border: none; padding: 0.75rem 1.5rem; border-radius: 999px; font-weight: 700; cursor: pointer; font-size: 0.95rem; transition: background 0.2s; }
   .btn-confirmar:hover { background: var(--cedro); }
@@ -87,13 +103,39 @@
       <legend style="color:var(--cedro); font-weight:700; font-size:0.9rem; margin-bottom:0.55rem;">Roles</legend>
       <div class="roles-grid">
         {{foreach roles}}
-        <label class="role-option">
-          <input type="checkbox" name="role_ids[]" value="{{rolId}}" {{if selected}}checked{{endif selected}} {{if locked}}disabled{{endif locked}}>
-          <span>
-            <strong>{{rolNombre}}</strong>
-            <small>{{rolDescripcion}}</small>
-          </span>
-        </label>
+        <article class="role-option">
+          <label class="role-option-select">
+            <input class="role-checkbox" type="checkbox" name="role_ids[]" value="{{rolId}}" {{if selected}}checked{{endif selected}} {{if locked}}disabled{{endif locked}}>
+            <span>
+              <strong>{{rolNombre}}</strong>
+              <small>{{rolDescripcion}}</small>
+            </span>
+          </label>
+          <details class="role-access">
+            <summary>
+              <span>Ver accesos</span>
+              <span class="role-access-count">{{permission_count}}</span>
+            </summary>
+            <div class="role-access-body">
+              {{if automatic_access}}
+              <div class="role-access-note">Acceso total automático a todas las funciones activas.</div>
+              {{endif automatic_access}}
+              {{if has_permissions}}
+              <ul class="role-access-list">
+                {{foreach permissions}}
+                <li class="role-access-item">
+                  <span class="access-kind access-kind--{{accessClass}}">{{accessType}}</span>
+                  <span>{{funcionDescripcion}}</span>
+                </li>
+                {{endfor permissions}}
+              </ul>
+              {{endif has_permissions}}
+              {{ifnot has_permissions}}
+              <p class="role-access-empty">Este rol no tiene accesos activos.</p>
+              {{endifnot has_permissions}}
+            </div>
+          </details>
+        </article>
         {{endfor roles}}
       </div>
       {{if errorRoles}}<div class="error">{{errorRoles}}</div>{{endif errorRoles}}

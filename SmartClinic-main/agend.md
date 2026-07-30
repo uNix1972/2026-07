@@ -336,6 +336,37 @@ Important permission rule:
   `roles_usuarios` already models many assignments per user. The correction
   was made in the DAO, controllers, and templates.
 
+## Role Permission Administration
+
+- `funciones_roles` is the authoritative many-to-many relationship between
+  roles and functions. A function can represent a visible menu, an accessible
+  controller/module, or an operational action.
+- The user form displays each role's effective access in an expandable,
+  read-only panel. Role selection belongs to user administration; permission
+  editing belongs exclusively to the Roles catalog.
+- `Dao\Security\Roles` owns permission composition and writes. Role creation
+  and editing call `createRoleWithPermissions()` or
+  `updateRoleWithPermissions()` so role metadata and the complete selected
+  function set commit or roll back together.
+- Permission replacement deactivates old `funciones_roles` rows and reuses a
+  historical row when the same permission is selected again. It never deletes
+  assignment history.
+- An active non-administrator role must have at least one active function.
+  Posted function IDs are validated against the active function catalog before
+  any transaction is committed.
+- Role 1 (Administrator) receives every active function automatically through
+  the authorization bypass. Its permission list is displayed as complete but
+  is read-only, and the role cannot be deactivated or deleted.
+- Deleting a normal role from the interface is a soft deactivation. The role,
+  current user memberships, and function assignments are marked inactive in
+  one transaction so security history and foreign-key integrity are retained.
+- Authorization checks must require active roles, active functions, active
+  role-function rows, active user-role rows, and valid start/end dates. An
+  inactive role must never continue granting access.
+- Some legacy function labels were stored with double-encoded UTF-8. The
+  canonical SQL contains targeted conversion updates for affected function
+  names and descriptions before those values are displayed in access panels.
+
 ## Existing Operational Notes
 
 - Correct shared-Apache URL:

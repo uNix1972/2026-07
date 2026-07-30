@@ -248,12 +248,35 @@ class User extends PrivateController
         $this->viewData["est_INA"] = ($this->user["userest"] ?? "ACT") === "INA";
         $this->viewData["roles"] = array_map(
             function (array $role) use ($accessLocked): array {
+                $permissions = array_map(
+                    static fn(array $permission): array => [
+                        "funcionNombre" => htmlspecialchars(
+                            $permission["funcionNombre"] ?? "",
+                            ENT_QUOTES
+                        ),
+                        "funcionDescripcion" => htmlspecialchars(
+                            $permission["funcionDescripcion"] ?? "",
+                            ENT_QUOTES
+                        ),
+                        "accessType" => htmlspecialchars(
+                            $permission["accessType"] ?? "Acceso",
+                            ENT_QUOTES
+                        ),
+                        "accessClass" => $permission["accessClass"] ?? "action",
+                    ],
+                    $role["permissions"] ?? []
+                );
+
                 return [
                     "rolId" => (int) $role["rolId"],
                     "rolNombre" => htmlspecialchars($role["rolNombre"], ENT_QUOTES),
                     "rolDescripcion" => htmlspecialchars($role["rolDescripcion"], ENT_QUOTES),
                     "selected" => in_array((int) $role["rolId"], $this->selectedRoleIds, true),
                     "locked" => $accessLocked,
+                    "permissions" => $permissions,
+                    "permission_count" => count($permissions),
+                    "has_permissions" => $permissions !== [],
+                    "automatic_access" => (bool) ($role["automatic_access"] ?? false),
                 ];
             },
             $this->availableRoles

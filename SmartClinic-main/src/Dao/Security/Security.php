@@ -265,15 +265,22 @@ class Security extends \Dao\Table
     // =============================
     static public function getFeatureByUsuario($userCod, $fncod)
     {
-        // Determina si un usuario tiene permiso especifico
+        // A permission is valid only while the function, role, user-role
+        // assignment, and role-function assignment are all active and current.
         $sqlstr = "SELECT f.funcionId
             FROM funciones f
             INNER JOIN funciones_roles fr ON fr.funcionId = f.funcionId
+            INNER JOIN roles r ON r.rolId = fr.rolId
             INNER JOIN roles_usuarios ru ON ru.rolId = fr.rolId
             WHERE f.funcionNombre = :funcionNombre
               AND f.funcionStatus = 'ACT'
+              AND r.rolStatus = 'ACT'
               AND fr.frStatus = 'ACT'
+              AND fr.frFechaInicio <= CURRENT_TIMESTAMP
+              AND fr.frFechaFin >= CURRENT_TIMESTAMP
               AND ru.ruStatus = 'ACT'
+              AND ru.ruFechaInicio <= CURRENT_TIMESTAMP
+              AND ru.ruFechaFin >= CURRENT_TIMESTAMP
               AND ru.usuarioId = :usuarioId
             LIMIT 1;";
         $resultados = self::obtenerRegistros(
@@ -342,12 +349,15 @@ class Security extends \Dao\Table
     // =============================
     static public function isUsuarioInRol($userCod, $rolescod)
     {
-        // Determina si un usuario pertenece a un rol
+        // Determines whether role membership is active and within its validity
+        // dates. Inactive roles cannot continue granting automatic access.
         $sqlstr = "SELECT r.rolId
             FROM roles r
             INNER JOIN roles_usuarios ru ON ru.rolId = r.rolId
             WHERE r.rolStatus = 'ACT'
               AND ru.ruStatus = 'ACT'
+              AND ru.ruFechaInicio <= CURRENT_TIMESTAMP
+              AND ru.ruFechaFin >= CURRENT_TIMESTAMP
               AND ru.usuarioId = :usuarioId
               AND r.rolId = :rolId
             LIMIT 1;";
@@ -366,12 +376,14 @@ class Security extends \Dao\Table
     // =============================
     static public function getRolesByUsuario($userCod)
     {
-        // Devuelve roles activos asociados al usuario
+        // Returns only active role memberships within their validity dates.
         $sqlstr = "SELECT r.*
             FROM roles r
             INNER JOIN roles_usuarios ru ON ru.rolId = r.rolId
             WHERE r.rolStatus = 'ACT'
               AND ru.ruStatus = 'ACT'
+              AND ru.ruFechaInicio <= CURRENT_TIMESTAMP
+              AND ru.ruFechaFin >= CURRENT_TIMESTAMP
               AND ru.usuarioId = :usuarioId;";
         $resultados = self::obtenerRegistros(
             $sqlstr,

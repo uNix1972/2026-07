@@ -56,19 +56,14 @@ class Users extends Table
     }
 
     /**
-     * Returns the active role catalog used by the user form and filters.
+     * Returns active roles with the effective access granted by each role.
      *
-     * The optional connection lets transactional methods validate roles using
-     * the same database transaction as the user write.
+     * The role DAO owns permission composition. The optional connection keeps
+     * role validation inside the same transaction as a user write.
      */
     public static function getActiveRoles(&$conn = null): array
     {
-        $sql = "SELECT rolId, rolNombre, rolDescripcion
-                FROM roles
-                WHERE rolStatus = 'ACT'
-                ORDER BY rolId ASC";
-
-        return self::obtenerRegistros($sql, [], $conn);
+        return Roles::getActiveRolesWithPermissions($conn);
     }
 
     /**

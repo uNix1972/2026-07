@@ -23,6 +23,9 @@ class Roles extends PrivateController
             // Obtener parametros de filtro y paginacion
             $partialName = \Utilities\Validators::sanitizeString($_GET["partialName"] ?? "");
             $status = \Utilities\Validators::sanitizeAlphaNum($_GET["status"] ?? "");
+            if (!in_array($status, ["ACT", "INA"], true)) {
+                $status = "";
+            }
             $orderBy = $this->getOrderBy();
             $orderDescending = $this->getOrderDescending();
             $pageNum = \Utilities\Validators::sanitizeInt($_GET["pageNum"] ?? 1, 1) ?? 1;
@@ -39,8 +42,37 @@ class Roles extends PrivateController
                 $itemsPerPage
             );
 
-            // Preparar datos para la vista
-            $this->viewData["roles"] = $result["roles"];
+            // Prepare safe role and permission values for the template.
+            $this->viewData["roles"] = array_map(
+                static function (array $role): array {
+                    $role["role_id_url"] = rawurlencode($role["rolescod"]);
+                    $role["is_active"] = $role["rolesest"] === "ACT";
+                    $role["can_deactivate"] =
+                        $role["is_active"] && (int) $role["rolId"] !== 1;
+                    $role["rolescod"] = htmlspecialchars($role["rolescod"], ENT_QUOTES);
+                    $role["rolesdsc"] = htmlspecialchars($role["rolesdsc"], ENT_QUOTES);
+                    $role["permissions"] = array_map(
+                        static fn(array $permission): array => [
+                            "funcionNombre" => htmlspecialchars(
+                                $permission["funcionNombre"],
+                                ENT_QUOTES
+                            ),
+                            "funcionDescripcion" => htmlspecialchars(
+                                $permission["funcionDescripcion"],
+                                ENT_QUOTES
+                            ),
+                            "accessType" => htmlspecialchars(
+                                $permission["accessType"],
+                                ENT_QUOTES
+                            ),
+                            "accessClass" => $permission["accessClass"],
+                        ],
+                        $role["permissions"] ?? []
+                    );
+                    return $role;
+                },
+                $result["roles"]
+            );
             $this->viewData["total"] = $result["total"];
             $this->viewData["page"] = $result["page"];
             $this->viewData["itemsPerPage"] = $result["itemsPerPage"];

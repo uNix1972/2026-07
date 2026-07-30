@@ -666,6 +666,69 @@ check(
     'roles administrativos tienen precedencia en la página inicial'
 );
 
+$rolesDao = file_get_contents(__DIR__ . '/../src/Dao/Security/Roles.php');
+$securityDao = file_get_contents(__DIR__ . '/../src/Dao/Security/Security.php');
+$roleController = file_get_contents(__DIR__ . '/../src/Controllers/Security/Rol.php');
+$roleView = file_get_contents(__DIR__ . '/../src/Views/templates/security/rol.view.tpl');
+$rolesView = file_get_contents(__DIR__ . '/../src/Views/templates/security/roles.view.tpl');
+check(
+    strpos($rolesDao, 'getActiveRolesWithPermissions') !== false
+        && strpos($rolesDao, 'attachPermissions') !== false
+        && strpos($rolesDao, 'automatic_access') !== false,
+    'DAO comentado compone los accesos efectivos de cada rol'
+);
+check(
+    strpos($rolesDao, 'createRoleWithPermissions') !== false
+        && strpos($rolesDao, 'updateRoleWithPermissions') !== false
+        && strpos($rolesDao, 'replacePermissions') !== false
+        && strpos($rolesDao, 'beginTransaction') !== false
+        && strpos($rolesDao, 'rollBack') !== false,
+    'roles y permisos se guardan transaccionalmente'
+);
+check(
+    strpos($rolesDao, "rolStatus = 'INA'") !== false
+        && strpos($rolesDao, "frStatus = 'INA'") !== false
+        && strpos($rolesDao, "ruStatus = 'INA'") !== false,
+    'desactivar un rol conserva historial y retira todos sus accesos'
+);
+check(
+    strpos($securityDao, 'INNER JOIN roles r ON r.rolId = fr.rolId') !== false
+        && substr_count($securityDao, 'ru.ruFechaInicio <= CURRENT_TIMESTAMP') >= 3
+        && strpos($securityDao, "r.rolStatus = 'ACT'") !== false,
+    'autorizacion respeta estado y vigencia de roles y asignaciones'
+);
+check(
+    strpos($userView, 'class="role-access"') !== false
+        && strpos($userView, '{{foreach permissions}}') !== false,
+    'formulario de usuario explica los accesos de cada rol'
+);
+check(
+    strpos($rolesView, 'class="role-permissions"') !== false
+        && strpos($rolesView, '{{permission_count}}') !== false,
+    'catalogo de roles muestra permisos expandibles'
+);
+check(
+    strpos($roleController, 'permission_ids') !== false
+        && strpos($roleController, 'updateRoleWithPermissions') !== false
+        && strpos($roleView, 'name="permission_ids[]"') !== false
+        && strpos($roleView, '{{foreach functionGroups}}') !== false,
+    'edicion de rol administra menus modulos y acciones'
+);
+check(
+    strpos($roleView, 'acceso automático a todas las funciones activas') !== false
+        && strpos($roleController, '$isAdministrator') !== false,
+    'acceso automatico del Administrador es visible y no editable'
+);
+check(
+    strpos(
+        $sql,
+        '-- cambios para corregir textos de funciones guardados con doble codificación UTF-8'
+    ) !== false
+        && strpos($sql, 'CONVERT(funcionDescripcion USING latin1)') !== false
+        && strpos($sql, "HEX(funcionDescripcion) LIKE '%C383C2%'") !== false,
+    'reparacion UTF-8 del catalogo de funciones documentada'
+);
+
 $navConfig = file_get_contents(__DIR__ . '/../nav.config.json');
 check(
     strpos($navConfig, 'ReportesController') === false

@@ -554,6 +554,25 @@ SET
     rolDescripcion = 'Acceso al portal médico, sala de espera e historial clínico'
 WHERE rolId = 3;
 
+-- cambios para corregir textos de funciones guardados con doble codificación UTF-8
+UPDATE funciones
+SET funcionNombre = CONVERT(
+    BINARY(CONVERT(funcionNombre USING latin1))
+    USING utf8mb4
+)
+WHERE
+    HEX(funcionNombre) LIKE '%C383C2%'
+    OR HEX(funcionNombre) LIKE '%C382C2%';
+
+UPDATE funciones
+SET funcionDescripcion = CONVERT(
+    BINARY(CONVERT(funcionDescripcion USING latin1))
+    USING utf8mb4
+)
+WHERE
+    HEX(funcionDescripcion) LIKE '%C383C2%'
+    OR HEX(funcionDescripcion) LIKE '%C382C2%';
+
 INSERT IGNORE INTO estado_cita (id, nombre_estado) VALUES
     (6, 'En Espera'),
     (7, 'En Atención');
