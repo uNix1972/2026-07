@@ -6,7 +6,7 @@
   <title>{{SITE_TITLE}} | Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{~BASE_DIR}}/public/css/main.css" />
+  <link rel="stylesheet" href="{{~BASE_DIR}}/public/css/main.css?v=20260730-2" />
   {{if FONT_AWESOME_KIT}}
   <script src="https://kit.fontawesome.com/{{FONT_AWESOME_KIT}}.js" crossorigin="anonymous"></script>
   {{endif FONT_AWESOME_KIT}}
@@ -25,9 +25,14 @@
       --blanco: #fffefe;
       --sombra: 0 8px 24px rgba(3, 59, 159, 0.16);
       --radio: 18px;
+      --admin-header-height: 64px;
+      --admin-sidebar-width: 292px;
+      --admin-sidebar: #06265c;
+      --admin-sidebar-deep: #041d48;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Montserrat', sans-serif; }
     body { background: var(--arena); color: #333; display: flex; flex-direction: column; min-height: 100vh; }
+    body.menu-open { overflow: hidden; }
 
 
     .skip-link {
@@ -88,7 +93,9 @@
       box-shadow: var(--sombra);
       position: sticky;
       top: 0;
-      z-index: 1001;
+      z-index: 1002;
+      min-height: var(--admin-header-height);
+      border-bottom: 1px solid #e4edf8;
     }
     .logo-box { display: flex; align-items: center; gap: 12px; text-decoration: none; }
     .logo-txt { font-family: 'Montserrat', sans-serif; font-size: 1.25rem; color: var(--cedro); font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; line-height: 1; }
@@ -111,8 +118,23 @@
     .menu_toggle { display: none; }
     .menu_toggle_icon {
       cursor: pointer;
-      display: flex; flex-direction: column; gap: 5px;
-      width: 36px; padding: 4px; z-index: 1002;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+      width: 42px;
+      height: 42px;
+      padding: 10px;
+      z-index: 1003;
+      border: 1px solid #dbe8f7;
+      border-radius: 8px;
+      background: #f7faff;
+      transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .menu_toggle_icon:hover {
+      background: #edf5ff;
+      border-color: #b8d4f3;
+      box-shadow: 0 6px 16px rgba(3, 59, 159, 0.12);
     }
     .hmb { height: 3px; width: 100%; background: var(--cedro); border-radius: 2px; transition: all 0.3s; }
     .menu_toggle:checked ~ .header .menu_toggle_icon .hrz { opacity: 0; }
@@ -121,41 +143,130 @@
 
     /* SIDEBAR */
     .sidebar {
-      position: fixed; top: 0; left: 0;
-      width: 270px; height: 100vh;
-      background: var(--cedro);
-      transform: translateX(-270px);
+      position: fixed;
+      top: var(--admin-header-height);
+      bottom: 0;
+      left: 0;
+      width: min(var(--admin-sidebar-width), calc(100vw - 28px));
+      background: var(--admin-sidebar);
+      transform: translateX(-105%);
       transition: transform 250ms ease-in-out;
-      z-index: 1000;
-      padding-top: 70px;
-      box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+      z-index: 1001;
+      box-shadow: 12px 0 32px rgba(3, 24, 62, 0.24);
+      border-right: 1px solid rgba(255,255,255,0.12);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
     .menu_toggle:checked ~ .sidebar { transform: translateX(0); }
-    .sidebar ul { list-style: none; padding: 1rem 0; }
-    .sidebar ul li a {
-      display: flex; align-items: center; gap: 0.75rem;
-      padding: 0.9rem 1.5rem;
-      color: rgba(255,255,255,0.88);
-      text-decoration: none; font-weight: 700; font-size: 0.95rem;
-      transition: background 0.2s, color 0.2s;
-      border-left: 3px solid transparent;
+    .sidebar-scroll {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 16px 12px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(153,222,252,0.65) transparent;
     }
-    .sidebar ul li a:hover { background: rgba(153,222,252,0.2); color: var(--blanco); border-left-color: var(--blanco); }
+    .sidebar-scroll::-webkit-scrollbar { width: 8px; }
+    .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-scroll::-webkit-scrollbar-thumb {
+      background: rgba(153,222,252,0.55);
+      border: 2px solid var(--admin-sidebar);
+      border-radius: 8px;
+    }
+    .sidebar-menu { list-style: none; }
+    .sidebar-item + .sidebar-item { margin-top: 4px; }
+    .sidebar-link,
+    .sidebar-logout {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-height: 46px;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      color: rgba(255,255,255,0.86);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      line-height: 1.25;
+      transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
+    }
+    .sidebar-link:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.1);
+      color: var(--blanco);
+      transform: translateX(2px);
+    }
+    .sidebar-link[aria-current="page"] {
+      background: #fff;
+      border-color: #fff;
+      color: var(--cedro);
+      box-shadow: 0 8px 20px rgba(1, 17, 43, 0.22);
+    }
+    .sidebar-link[aria-current="page"]::after {
+      content: '';
+      width: 7px;
+      height: 7px;
+      margin-left: auto;
+      border-radius: 50%;
+      background: #0f9b8e;
+      box-shadow: 0 0 0 3px rgba(15,155,142,0.15);
+    }
     .sidebar .nav-icon {
-      width: 1rem;
-      height: 1rem;
+      width: 30px;
+      height: 30px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      flex: 0 0 1rem;
+      flex: 0 0 30px;
+      border-radius: 7px;
+      background: rgba(255,255,255,0.09);
+      color: #d6efff;
+      transition: background 0.2s, color 0.2s;
     }
     .sidebar .nav-icon svg {
-      width: 1rem;
-      height: 1rem;
+      width: 16px;
+      height: 16px;
       fill: currentColor;
       display: block;
     }
-    .sidebar ul li.divider { border-top: 1px solid rgba(255,255,255,0.15); margin: 0.5rem 0; }
+    .sidebar-link:hover .nav-icon {
+      background: rgba(255,255,255,0.16);
+      color: #fff;
+    }
+    .sidebar-link[aria-current="page"] .nav-icon {
+      background: #e9f3ff;
+      color: var(--dorado);
+    }
+    .sidebar-footer {
+      flex: 0 0 auto;
+      padding: 12px;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      background: var(--admin-sidebar-deep);
+    }
+    .sidebar-logout { color: #ffd9df; }
+    .sidebar-logout:hover {
+      background: rgba(239,68,68,0.15);
+      border-color: rgba(255,160,174,0.2);
+      color: #fff;
+    }
+    .menu-backdrop {
+      position: fixed;
+      inset: var(--admin-header-height) 0 0;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(2px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 250ms ease-in-out;
+    }
+    .menu_toggle:checked ~ .menu-backdrop {
+      opacity: 1;
+      pointer-events: auto;
+    }
 
     .table-responsive {
       width: 100%;
@@ -350,6 +461,12 @@
       .table-responsive th,
       .table-responsive td { padding: 10px 12px; font-size: 0.95rem; }
     }
+    @media(max-height: 700px) {
+      .sidebar-scroll { padding-top: 10px; padding-bottom: 10px; }
+      .sidebar-item + .sidebar-item { margin-top: 2px; }
+      .sidebar-link,
+      .sidebar-logout { min-height: 42px; padding-top: 0.35rem; padding-bottom: 0.35rem; }
+    }
   </style>
 </head>
 <body>
@@ -357,7 +474,7 @@
   <input type="checkbox" class="menu_toggle" id="menu_toggle" />
 
   <header class="header">
-    <label for="menu_toggle" class="menu_toggle_icon" aria-label="Abrir o cerrar menú de navegación">
+    <label for="menu_toggle" class="menu_toggle_icon" role="button" tabindex="0" aria-controls="private-navigation" aria-expanded="false" aria-label="Abrir o cerrar menú de navegación">
       <div class="hmb dgn pt-1"></div>
       <div class="hmb hrz"></div>
       <div class="hmb dgn pt-2"></div>
@@ -374,15 +491,19 @@
     </div>
   </header>
 
-  <nav class="sidebar">
-    <ul>
-      {{foreach NAVIGATION}}
-      <li><a href="{{nav_url}}">{{nav_label}}</a></li>
-      {{endfor NAVIGATION}}
-      <li class="divider"></li>
-      <li><a href="index.php?page=sec_logout"><svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17v-3H3v-4h7V7l5 5-5 5zm3 4H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8v2H5v14h8v2zm8-9h-7v-2h7V7l4 5-4 5v-3z"/></svg> Cerrar Sesión</a></li>
-    </ul>
+  <nav class="sidebar" id="private-navigation" aria-label="Navegación principal">
+    <div class="sidebar-scroll">
+      <ul class="sidebar-menu">
+        {{foreach NAVIGATION}}
+        <li class="sidebar-item"><a class="sidebar-link" data-nav-link href="{{nav_url}}">{{nav_label}}</a></li>
+        {{endfor NAVIGATION}}
+      </ul>
+    </div>
+    <div class="sidebar-footer">
+      <a class="sidebar-logout" href="index.php?page=sec_logout"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17v-3H3v-4h7V7l5 5-5 5zm3 4H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8v2H5v14h8v2zm8-9h-7v-2h7V7l4 5-4 5v-3z"/></svg></span> Cerrar Sesión</a>
+    </div>
   </nav>
+  <label for="menu_toggle" class="menu-backdrop" aria-label="Cerrar menú de navegación"></label>
 
   <main id="contenido-principal" tabindex="-1">
     {{{page_content}}}
@@ -397,6 +518,7 @@
 {{endfor EndScripts}}
 <script src="{{BASE_DIR}}/public/js/modals.js"></script>
 <script src="{{BASE_DIR}}/public/js/smartclinic-confirm.js"></script>
+<script src="{{BASE_DIR}}/public/js/private-navigation.js"></script>
 
 </body>
 </html>

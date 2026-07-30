@@ -135,6 +135,10 @@ Important permission rule:
   on the right; legacy `create` and `edit` GET routes redirect into this page.
 - Existing center types outside the current creation catalog remain selectable
   during editing so saving another field never overwrites historical type data.
+- Directory cards use shrinkable identity and detail columns plus a natural-width
+  action column. They must remain inside the list panel instead of imposing
+  minimum grid widths that overflow narrower desktop workspaces. Medium screens
+  place actions on a second row, while wide screens use the larger page width.
 - Fields: code, name, type, address, city, phone, email, status, and timestamps.
 - Doctors can work at multiple active centers through `medico_centro_salud`.
 - Creating or editing a doctor requires at least one active center and a
@@ -303,6 +307,13 @@ Important permission rule:
   from `SCRIPT_NAME`. Assets therefore work both under the shared-Apache
   subfolder above and at `/` in the project's standalone Docker setup.
 - The project is PHP MVC with vanilla JavaScript; it does not use React.
+- The authenticated navigation uses a fixed header and a slide-out drawer. Its
+  menu body scrolls independently so every authorized option remains reachable
+  on short screens, while the logout action stays fixed at the bottom.
+- `public/js/private-navigation.js` marks the current controller link with
+  `aria-current`, synchronizes the drawer's expanded state, and supports closing
+  the menu with Escape. Menu permissions and ordering still come exclusively
+  from `nav.config.json` and `Utilities\Nav`.
 - Xdebug connection warnings do not prevent PHP execution.
 - `parameters.env` contains deployment defaults. Actual hosting-environment
   variables take precedence over those committed values.
