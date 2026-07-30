@@ -1,6 +1,6 @@
 <style>
-    /* Barra de búsqueda con autocompletar (Especialidad), mismo patrón
-       sc-combo usado en Kárdex/Inventario. Ver public/js/kardex-autocomplete.js. */
+    /* Barra de búsqueda con autocompletar, mismo patrón sc-combo usado en
+       Kárdex/Inventario/Médicos. Ver public/js/kardex-autocomplete.js. */
     .sc-combo { position: relative; }
     .sc-combo-input {
         width: 100%;
@@ -40,46 +40,40 @@
     }
 </style>
 
-<div class="container section-pad medicos-page">
+<div class="container section-pad enfermeras-page">
 
     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px;">
-        <h2 style="font-size:3rem; color:#111827;">Médicos</h2>
+        <h2 style="font-size:3rem; color:#111827;">Enfermeras</h2>
 
         {{if showCrudActions}}
         <button type="button" class="btn btn--primary"
                 style="background:#0260CB; color:white; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:600;"
-                onclick="window.location.href='index.php?page=MedicosController&action=create'">
-            + Nuevo médico
+                onclick="window.location.href='index.php?page=EnfermerasController&action=create'">
+            + Nueva enfermera
         </button>
         {{endif showCrudActions}}
     </div>
 
-    {{if consultorioNotice}}
-    <div role="status" style="margin-bottom:16px;padding:14px 16px;border:1px solid #93C5FD;border-radius:10px;background:#EFF6FF;color:#1E3A8A;">
-        {{consultorioNotice}}
-    </div>
-    {{endif consultorioNotice}}
-
-    {{if errorEliminarMedico}}
+    {{if errorEliminarEnfermera}}
     <div style="background:#FEF2F2; border:1px solid #FCA5A5; border-radius:12px; padding:14px 18px; margin-bottom:20px; color:#991B1B;">
-        No se pudo eliminar "<strong>{{errorEliminarMedico}}</strong>": tiene citas registradas y no se puede borrar sin perder ese historial. Usa "Desactivar" en su lugar.
+        No se pudo eliminar "<strong>{{errorEliminarEnfermera}}</strong>": tiene centros de salud asignados y no se puede borrar sin perder ese historial. Usa "Desactivar" en su lugar.
     </div>
-    {{endif errorEliminarMedico}}
+    {{endif errorEliminarEnfermera}}
 
     <div class="list-toolbar">
         <form method="GET" action="index.php" class="toolbar-form">
-            <input type="hidden" name="page" value="MedicosController" />
+            <input type="hidden" name="page" value="EnfermerasController" />
             <input type="hidden" name="action" value="index" />
             <div class="toolbar-row">
                 <div class="toolbar-field sc-combo" data-sc-combo data-sc-combo-submit-on-enter style="min-width:320px; flex:1 1 320px;">
-                    <label for="medico_search">Buscar</label>
-                    <input type="text" id="medico_search" name="search" class="sc-combo-input" autocomplete="off" placeholder="Buscar por nombres, apellidos, especialidad o N° de colegiatura..." value="{{searchValue}}" data-sc-combo-input data-options="{{~medicosJsonAttr}}" />
-                    <input type="hidden" name="medico_id" data-sc-combo-hidden value="{{medicoBuscadoIdValue}}" />
+                    <label for="enfermera_search">Buscar</label>
+                    <input type="text" id="enfermera_search" name="search" class="sc-combo-input" autocomplete="off" placeholder="Buscar por nombres, apellidos o N° de colegiatura..." value="{{searchValue}}" data-sc-combo-input data-options="{{~enfermerasJsonAttr}}" />
+                    <input type="hidden" name="enfermera_id" data-sc-combo-hidden value="{{enfermeraBuscadaIdValue}}" />
                     <div class="sc-combo-results" data-sc-combo-results hidden></div>
                 </div>
                 <button type="submit" class="btn btn--primary toolbar-submit">Buscar</button>
                 {{if hayBusqueda}}
-                <a class="btn btn--outline" href="index.php?page=MedicosController&action=index">Quitar búsqueda</a>
+                <a class="btn btn--outline" href="index.php?page=EnfermerasController&action=index">Quitar búsqueda</a>
                 {{endif hayBusqueda}}
             </div>
         </form>
@@ -98,11 +92,11 @@
             <thead>
                 <tr style="background:#033B9F; color:white;">
                     <th style="padding:14px 10px; text-align:left; vertical-align:middle;">Nombres</th>
-                    <th style="padding:14px 10px;">Especialidad</th>
                     <th style="padding:14px 10px;">Apellidos</th>
                     <th style="padding:14px 10px; white-space:nowrap;">N° Colegiatura</th>
                     <th style="padding:14px 10px;">Teléfono</th>
-                    <th style="padding:14px 10px;">Centros / Consultorios</th>
+                    <th style="padding:14px 10px;">Centros / Áreas</th>
+                    <th style="padding:14px 10px;">Usuario vinculado</th>
                     <th style="padding:14px 10px; white-space:nowrap;">Estado</th>
                     <th style="padding:14px 10px; white-space:nowrap;">Acciones</th>
                 </tr>
@@ -110,11 +104,10 @@
 
             <tbody>
 
-                {{foreach medicos}}
+                {{foreach enfermeras}}
 
                 <tr style="border-bottom:1px solid #E5E7EB;">
                     <td style="padding:12px 10px; vertical-align:middle;">{{nombres}}</td>
-                    <td style="padding:12px 10px; vertical-align:middle;">{{nombre_especialidad}}</td>
                     <td style="padding:12px 10px; vertical-align:middle;">{{apellidos}}</td>
                     <td style="padding:12px 10px; vertical-align:middle; white-space:nowrap;">{{num_colegiatura}}</td>
                     <td style="padding:12px 10px; vertical-align:middle; white-space:nowrap;">{{telefono}}</td>
@@ -136,7 +129,7 @@
                                     {{foreach centros_lista}}
                                     <div class="centros-modal__item">
                                         <div class="centros-modal__item-name">{{centro_nombre}}</div>
-                                        <div class="centros-modal__item-sub">Consultorio {{consultorio}}</div>
+                                        <div class="centros-modal__item-sub">Área/turno: {{area}}</div>
                                     </div>
                                     {{endfor centros_lista}}
                                 </div>
@@ -146,23 +139,28 @@
                         </dialog>
                     </td>
 
+                    <td style="padding:12px 10px; vertical-align:middle;">
+                        {{if tieneUsuario}}{{usuario_username}}{{endif tieneUsuario}}
+                        {{ifnot tieneUsuario}}<span style="color:#94A3B8;">Sin cuenta vinculada</span>{{endifnot tieneUsuario}}
+                    </td>
+
                     <td style="padding:12px 10px; vertical-align:middle; white-space:nowrap;">{{estado}}</td>
 
                     <td style="padding:12px 10px; vertical-align:middle;">
 
                         {{if ~showCrudActions}}
                         <div style="display:flex; justify-content:flex-end; flex-wrap:nowrap; gap:4px;">
-                            <a href="index.php?page=MedicosController&action=edit&id={{id}}" class="btn btn--outline" style="padding:5px 9px; font-size:11.5px; white-space:nowrap;">Editar</a>
+                            <a href="index.php?page=EnfermerasController&action=edit&id={{id}}" class="btn btn--outline" style="padding:5px 9px; font-size:11.5px; white-space:nowrap;">Editar</a>
 
                             {{if esActivo}}
-                            <form method="POST" action="index.php?page=MedicosController&action=desactivar" data-confirm="¿Seguro que desea desactivar este médico? No se agendarán más citas con él/ella, pero su información e historial se conservan.">
+                            <form method="POST" action="index.php?page=EnfermerasController&action=desactivar" data-confirm="¿Seguro que desea desactivar esta enfermera? No se le asignarán más centros, pero su información e historial se conservan.">
                                 <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
                                 <input type="hidden" name="id" value="{{id}}">
                                 <button type="submit" class="btn btn--outline" style="padding:5px 9px; font-size:11.5px; white-space:nowrap;">Desactivar</button>
                             </form>
                             {{endif esActivo}}
                             {{ifnot esActivo}}
-                            <form method="POST" action="index.php?page=MedicosController&action=activar">
+                            <form method="POST" action="index.php?page=EnfermerasController&action=activar">
                                 <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
                                 <input type="hidden" name="id" value="{{id}}">
                                 <button type="submit" class="btn btn--outline" style="padding:5px 9px; font-size:11.5px; white-space:nowrap;">Activar</button>
@@ -170,7 +168,7 @@
                             {{endifnot esActivo}}
 
                             {{if puedeEliminar}}
-                            <form method="POST" action="index.php?page=MedicosController&action=eliminar" data-confirm="¿ELIMINAR PERMANENTEMENTE este médico? Esta acción no se puede deshacer. Solo se permite porque nunca tuvo ninguna cita registrada.">
+                            <form method="POST" action="index.php?page=EnfermerasController&action=eliminar" data-confirm="¿ELIMINAR PERMANENTEMENTE esta enfermera? Esta acción no se puede deshacer. Solo se permite porque nunca tuvo ningún centro asignado.">
                                 <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
                                 <input type="hidden" name="id" value="{{id}}">
                                 <button type="submit" class="btn btn--outline" style="padding:5px 9px; font-size:11.5px; white-space:nowrap;">Eliminar</button>
@@ -186,16 +184,16 @@
                     </td>
                 </tr>
 
-                {{endfor medicos}}
+                {{endfor enfermeras}}
 
             </tbody>
 
         </table>
         </div>
 
-        {{if medicos}}
+        {{if enfermeras}}
         <div style="display:flex; justify-content:space-between; align-items:center; padding:16px; flex-wrap:wrap; gap:12px; border-top:1px solid #E5E7EB;">
-            <span style="color:#64748b;">Página {{paginaActual}} de {{totalPaginas}} ({{totalMedicos}} médicos)</span>
+            <span style="color:#64748b;">Página {{paginaActual}} de {{totalPaginas}} ({{totalEnfermeras}} enfermeras)</span>
             <div style="display:flex; gap:10px;">
                 {{if urlPaginaAnterior}}
                 <a class="btn btn--outline" href="{{urlPaginaAnterior}}">&larr; Anterior</a>
@@ -211,18 +209,15 @@
                 {{endifnot urlPaginaSiguiente}}
             </div>
         </div>
-        {{endif medicos}}
+        {{endif enfermeras}}
 
     </div>
 
 </div>
 
 <style>
-  /* Popup "Centros de salud" del listado de Médicos: uno por fila (usa el
-     <dialog> nativo del navegador). El reset global "*{margin:0}" del sitio
-     anula el centrado automático del navegador, así que aquí lo forzamos con
-     inset:0 + margin:auto. La entrada/salida se anima con @starting-style,
-     que es el mecanismo estándar para transiciones de <dialog>. */
+  /* Popup "Centros de salud" del listado de Enfermeras: mismo componente
+     visual que el de Médicos (glass + paleta del sistema). */
   .centros-modal {
     position: fixed;
     inset: 0;
@@ -342,9 +337,6 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  // Clic sobre el fondo (::backdrop) también cierra el popup: un click
-  // dentro de <dialog> cuyo target sea el propio <dialog> (no un hijo)
-  // significa que fue afuera del cuadro de contenido.
   document.querySelectorAll('.centros-modal').forEach(function (dialogEl) {
     dialogEl.addEventListener('click', function (event) {
       if (event.target === dialogEl) {

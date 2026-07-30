@@ -196,6 +196,121 @@ class ClinicaAvanzada extends Table
         );
     }
 
+    /**
+     * Igual que actualizarEstadoCita(), pero atómico: bloquea la fila con
+     * FOR UPDATE y confirma que la cita sigue en el estado que el
+     * llamador validó momentos antes antes de escribir.
+     *
+     * Sin esto, dos solicitudes casi simultáneas sobre la misma cita
+     * (doble clic, dos pestañas) podían leer el mismo estado "viejo",
+     * pasar las dos la validación en PHP, y las dos escribir: se
+     * duplicaba la notificación y el registro de auditoría aunque el
+     * resultado final (el estado) fuera el mismo.
+     *
+     * @return bool true si el cambio se aplicó; false si la cita ya no
+     *         estaba en el estado esperado (alguien más la cambió primero
+     *         mientras se esperaba el candado).
+     */
+    public static function actualizarEstadoCitaSiEstaba(
+        int $citaId,
+        int $estadoEsperado,
+        int $estadoNuevo
+    ): bool {
+        $conn = self::getConn();
+        $conn->beginTransaction();
+        try {
+            $cita = parent::obtenerUnRegistro(
+                "SELECT estado_id FROM cita WHERE id = :id FOR UPDATE",
+                ['id' => $citaId],
+                $conn
+            );
+            if (!$cita || (int) $cita['estado_id'] !== $estadoEsperado) {
+                $conn->rollBack();
+                return false;
+            }
+
+            parent::executeNonQuery(
+                "UPDATE cita SET estado_id = :estado_id WHERE id = :id",
+                ['estado_id' => $estadoNuevo, 'id' => $citaId],
+                $conn
+            );
+            $conn->commit();
+            return true;
+        } catch (\Throwable $e) {
+            if ($conn->inTransaction()) {
+                $conn->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Pone una cita "En Atención" (7) de forma atómica, incluyendo la
+     * regla de "un médico solo puede tener una consulta activa a la vez".
+     *
+     * Antes, esa regla se validaba con una lectura simple (getCitaEnAtencion)
+     * separada de la escritura: dos solicitudes de "Iniciar atención" sobre
+     * DOS citas distintas del mismo médico, casi al mismo tiempo, podían
+     * las dos leer "no tiene ninguna en curso" antes de que cualquiera
+     * escribiera, y terminar con el médico "en atención" de dos pacientes
+     * a la vez. Aquí se bloquea primero la fila del médico (como candado
+     * general para ese médico) para que la segunda solicitud tenga que
+     * esperar a que la primera termine, y entonces sí vea el estado real.
+     *
+     * @return array{ok:bool, motivo:?string, ocupadaCon:?array}
+     */
+    public static function iniciarAtencionSiPosible(int $citaId, int $medicoId): array
+    {
+        $conn = self::getConn();
+        $conn->beginTransaction();
+        try {
+            parent::obtenerUnRegistro(
+                "SELECT id FROM medico WHERE id = :id FOR UPDATE",
+                ['id' => $medicoId],
+                $conn
+            );
+
+            $cita = parent::obtenerUnRegistro(
+                "SELECT estado_id FROM cita WHERE id = :id FOR UPDATE",
+                ['id' => $citaId],
+                $conn
+            );
+            if (!$cita || (int) $cita['estado_id'] !== 6) {
+                $conn->rollBack();
+                return ['ok' => false, 'motivo' => 'estado', 'ocupadaCon' => null];
+            }
+
+            $enAtencion = parent::obtenerUnRegistro(
+                "SELECT c.id, p.nombres AS paciente_nombres, p.apellidos AS paciente_apellidos
+                 FROM cita c
+                 INNER JOIN paciente p ON p.id = c.paciente_id
+                 WHERE c.medico_id = :medico_id
+                   AND c.estado_id = 7
+                   AND c.id != :cita_id
+                 LIMIT 1",
+                ['medico_id' => $medicoId, 'cita_id' => $citaId],
+                $conn
+            );
+            if ($enAtencion) {
+                $conn->rollBack();
+                return ['ok' => false, 'motivo' => 'ocupado', 'ocupadaCon' => $enAtencion];
+            }
+
+            parent::executeNonQuery(
+                "UPDATE cita SET estado_id = 7 WHERE id = :id",
+                ['id' => $citaId],
+                $conn
+            );
+            $conn->commit();
+            return ['ok' => true, 'motivo' => null, 'ocupadaCon' => null];
+        } catch (\Throwable $e) {
+            if ($conn->inTransaction()) {
+                $conn->rollBack();
+            }
+            throw $e;
+        }
+    }
+
     public static function guardarHistorial(int $citaId, string $motivo, string $diagnostico, string $tratamiento, string $observaciones): int
     {
         $existe = parent::obtenerUnRegistro("SELECT id FROM historial_medico WHERE cita_id = :cita_id", ['cita_id' => $citaId]);
@@ -492,9 +607,21 @@ class ClinicaAvanzada extends Table
         return parent::obtenerRegistros($sql, ['usuario_id' => $usuarioId]);
     }
 
-    public static function marcarNotificacionLeida(int $id): void
+    /**
+     * Marca una notificación como leída, pero solo si es visible para ese
+     * usuario (destinatario exacto o notificación general sin destinatario).
+     * Sin este filtro, cualquier usuario logueado podía marcar como leída
+     * la notificación de otra persona con solo cambiar el id en la URL.
+     */
+    public static function marcarNotificacionLeida(int $id, int $usuarioId): bool
     {
-        parent::executeNonQuery("UPDATE notificaciones SET leida = 1 WHERE id = :id", ['id' => $id]);
+        return parent::executeNonQuery(
+            "UPDATE notificaciones
+             SET leida = 1
+             WHERE id = :id
+               AND (usuario_destino_id IS NULL OR usuario_destino_id = :usuario_id)",
+            ['id' => $id, 'usuario_id' => $usuarioId]
+        );
     }
 
     public static function crearTokenRecuperacion(string $email, string $token): void

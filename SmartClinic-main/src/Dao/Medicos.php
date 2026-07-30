@@ -32,7 +32,10 @@ class Medicos extends Table
                            WHERE mcs.medico_id = m.id
                              AND mcs.estado = 'ACT'
                              AND cs.estado = 'ACT'
-                       ), '') AS centros_salud
+                       ), '') AS centros_salud,
+                       EXISTS(
+                           SELECT 1 FROM cita c WHERE c.medico_id = m.id
+                       ) AS tiene_citas
                 FROM medico m
                 JOIN especialidad e ON m.especialidad_id = e.id
                 ORDER BY m.id DESC";
@@ -274,14 +277,52 @@ class Medicos extends Table
     }
 
     /**
-     * Elimina un médico.
-     *
-     * Las relaciones con centros usan ON DELETE CASCADE, pero otras tablas
-     * como citas pueden impedir la eliminación para proteger su historial.
+     * Borra un médico DE VERDAD. Solo debe llamarse después de confirmar
+     * con tieneCitas() que nunca tuvo ninguna cita — la relación con
+     * centros usa ON DELETE CASCADE (se borra sola), pero esto no protege
+     * contra borrar por error a un médico con historial real.
      */
     public static function deleteMedico(int $id): bool
     {
         $sql = "DELETE FROM medico WHERE id = :id";
         return parent::executeNonQuery($sql, ["id" => $id]);
+    }
+
+    /**
+     * Indica si el médico tiene alguna cita registrada (en cualquier
+     * estado, pasada o futura). Es la condición que decide si se puede
+     * borrar de verdad o si solo se puede desactivar.
+     */
+    public static function tieneCitas(int $id): bool
+    {
+        $row = parent::obtenerUnRegistro(
+            "SELECT 1 AS existe FROM cita WHERE medico_id = :id LIMIT 1",
+            ["id" => $id]
+        );
+        return $row !== false && $row !== null;
+    }
+
+    /**
+     * Desactiva un médico (no lo borra): deja de aparecer disponible para
+     * agendar citas nuevas, pero su información e historial se conservan
+     * intactos. Mismo patrón que Producto::disable()/Proveedor::disable().
+     */
+    public static function disable(int $id): bool
+    {
+        return parent::executeNonQuery(
+            "UPDATE medico SET estado = 'INA' WHERE id = :id",
+            ["id" => $id]
+        );
+    }
+
+    /**
+     * Reactiva un médico desactivado con disable().
+     */
+    public static function enable(int $id): bool
+    {
+        return parent::executeNonQuery(
+            "UPDATE medico SET estado = 'ACT' WHERE id = :id",
+            ["id" => $id]
+        );
     }
 }

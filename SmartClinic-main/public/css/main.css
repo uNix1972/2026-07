@@ -1644,6 +1644,16 @@ p  { color: var(--sc-gray-500); line-height: 1.75; }
     }
 }
 
+/* Médicos: tabla ancha (8 columnas) necesita más espacio para no generar scroll horizontal */
+.container.medicos-page {
+    max-width: 1320px;
+}
+
+/* Enfermeras: mismo motivo que Médicos (8 columnas) */
+.container.enfermeras-page {
+    max-width: 1320px;
+}
+
 /* Unified Health Centers workspace */
 .container.health-centers-page {
     max-width: 1440px;

@@ -28,8 +28,14 @@ class MedicosController extends PublicController
             case "edit":
                 $this->edit();
                 break;
-            case "delete":
-                $this->delete();
+            case "desactivar":
+                $this->desactivar();
+                break;
+            case "activar":
+                $this->activar();
+                break;
+            case "eliminar":
+                $this->eliminar();
                 break;
             default:
                 $this->index();
@@ -70,6 +76,11 @@ class MedicosController extends PublicController
                 }
             }
             $medico["tieneCentros"] = count($medico["centros_lista"]) > 0;
+            $medico["esActivo"] = ($medico["estado"] ?? "ACT") === "ACT";
+            // Solo se ofrece "Eliminar" (borrado definitivo) si el médico
+            // nunca tuvo ninguna cita; si tuvo, la única opción es
+            // Desactivar/Activar para no perder su historial.
+            $medico["puedeEliminar"] = !((bool) ($medico["tiene_citas"] ?? false));
         }
         unset($medico);
 
@@ -153,6 +164,8 @@ class MedicosController extends PublicController
         $this->viewData["consultorioNotice"] =
             $_SESSION["medicos_consultorio_notice"] ?? "";
         unset($_SESSION["medicos_consultorio_notice"]);
+        $this->viewData["errorEliminarMedico"] =
+            trim((string) ($_GET["errorEliminar"] ?? ""));
 
         // URL base para los enlaces Anterior/Siguiente, conservando el
         // filtro de búsqueda activo (mismo criterio que en Inventario).
@@ -350,7 +363,13 @@ class MedicosController extends PublicController
         $this->renderEdit($medico, $assignments);
     }
 
-    private function delete(): void
+    /**
+     * Desactiva un médico (no lo borra): deja de estar disponible para
+     * agendar, pero conserva toda su información e historial de citas.
+     * Mismo patrón que InventarioController/ComprasController con
+     * productos y proveedores.
+     */
+    private function desactivar(): void
     {
         $this->authorizeCrud();
 
@@ -360,17 +379,113 @@ class MedicosController extends PublicController
         }
 
         $id = Validators::sanitizeId($_POST["id"] ?? 0);
-
         if ($id !== null) {
             $medico = DaoMedicos::getMedicoById($id);
-            DaoMedicos::deleteMedico($id);
+            DaoMedicos::disable($id);
             AuditLogger::log(
                 "eliminar",
                 "Médicos",
-                "Médico eliminado: "
+                "Médico desactivado: "
                     . (($medico["nombres"] ?? "") . " " . ($medico["apellidos"] ?? "")),
                 ["medico_id" => $id]
             );
+        }
+
+        Site::redirectTo("index.php?page=MedicosController&action=index");
+        exit;
+    }
+
+    /**
+     * Reactiva un médico que se había desactivado con desactivar().
+     */
+    private function activar(): void
+    {
+        $this->authorizeCrud();
+
+        if ($_SERVER["REQUEST_METHOD"] !== "POST" || !Security::validateCsrfPost()) {
+            Site::redirectTo("index.php?page=MedicosController&action=index");
+            exit;
+        }
+
+        $id = Validators::sanitizeId($_POST["id"] ?? 0);
+        if ($id !== null) {
+            $medico = DaoMedicos::getMedicoById($id);
+            DaoMedicos::enable($id);
+            AuditLogger::log(
+                "activar",
+                "Médicos",
+                "Médico reactivado: "
+                    . (($medico["nombres"] ?? "") . " " . ($medico["apellidos"] ?? "")),
+                ["medico_id" => $id]
+            );
+        }
+
+        Site::redirectTo("index.php?page=MedicosController&action=index");
+        exit;
+    }
+
+    /**
+     * Borrado DEFINITIVO de un médico. A diferencia de producto/proveedor
+     * (que intentan el DELETE y solo atrapan el error de llave foránea),
+     * aquí se verifica ANTES si el médico tuvo alguna cita: si tuvo
+     * aunque sea una, ni se intenta — se le pide usar "Desactivar" en su
+     * lugar, para no depender de que la base rechace el borrado.
+     */
+    private function eliminar(): void
+    {
+        $this->authorizeCrud();
+
+        if ($_SERVER["REQUEST_METHOD"] !== "POST" || !Security::validateCsrfPost()) {
+            Site::redirectTo("index.php?page=MedicosController&action=index");
+            exit;
+        }
+
+        $id = Validators::sanitizeId($_POST["id"] ?? 0);
+        if ($id !== null) {
+            $medico = DaoMedicos::getMedicoById($id);
+            $nombreMedico = trim(
+                (string) (($medico["nombres"] ?? "") . " " . ($medico["apellidos"] ?? ""))
+            );
+
+            if (DaoMedicos::tieneCitas($id)) {
+                AuditLogger::log(
+                    "error",
+                    "Médicos",
+                    "No se pudo eliminar (tiene citas registradas): " . $nombreMedico,
+                    ["medico_id" => $id]
+                );
+                Site::redirectTo(
+                    "index.php?page=MedicosController&action=index&errorEliminar="
+                        . urlencode($nombreMedico)
+                );
+                exit;
+            }
+
+            try {
+                DaoMedicos::deleteMedico($id);
+                AuditLogger::log(
+                    "eliminar",
+                    "Médicos",
+                    "Médico eliminado definitivamente: " . $nombreMedico,
+                    ["medico_id" => $id]
+                );
+            } catch (\PDOException $ex) {
+                // Red de seguridad extra por si algo más (no citas) usa
+                // ON DELETE RESTRICT contra medico; no debería pasar dado
+                // el chequeo de arriba, pero mejor un aviso claro que un
+                // error 500 en blanco.
+                AuditLogger::log(
+                    "error",
+                    "Médicos",
+                    "No se pudo eliminar: " . $nombreMedico,
+                    ["medico_id" => $id]
+                );
+                Site::redirectTo(
+                    "index.php?page=MedicosController&action=index&errorEliminar="
+                        . urlencode($nombreMedico)
+                );
+                exit;
+            }
         }
 
         Site::redirectTo("index.php?page=MedicosController&action=index");

@@ -12,14 +12,28 @@ class NotificacionesController extends PrivateController
     public function run(): void
     {
         if (($_GET['action'] ?? '') === 'read') {
-            $id = intval($_GET['id'] ?? 0);
+            // Antes esto era un simple link GET sin token CSRF y sin
+            // verificar dueño: cualquiera con sesión podía marcar como
+            // leída la notificación de otro usuario solo cambiando el id
+            // en la URL. Ahora exige POST + CSRF, y el UPDATE en el DAO
+            // ya filtra por usuario_destino_id.
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !Security::validateCsrfPost()) {
+                Site::redirectTo(
+                    'index.php?page=NotificacionesController&msg='
+                    . urlencode('Solicitud inválida o expirada.')
+                );
+                return;
+            }
+
+            $id = intval($_POST['id'] ?? 0);
             if ($id > 0) {
-                Clinica::marcarNotificacionLeida($id);
+                Clinica::marcarNotificacionLeida($id, intval(Security::getUserId()));
             }
             Site::redirectTo(
                 'index.php?page=NotificacionesController&msg='
                 . urlencode('Notificación marcada como leída.')
             );
+            return;
         }
         // "Ver leídas" muestra el historial de lo ya atendido; por defecto
         // ("pendientes") se ven solo las que faltan por marcar.
@@ -51,6 +65,7 @@ class NotificacionesController extends PrivateController
             'notificaciones' => $notificaciones,
             'verLeidas' => $verLeidas,
             'msg' => $_GET['msg'] ?? '',
+            'csrf_token' => Security::getCsrfToken(),
         ]);
     }
 }

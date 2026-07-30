@@ -404,23 +404,39 @@ class DoctoresController extends PrivateController
                 $citaId
             );
         }
+        // El cambio de estado en sí se hace con un candado atómico (ver
+        // ClinicaAvanzada) en vez de "leer estado -> validar en PHP ->
+        // escribir": eso dejaba una ventana donde dos solicitudes casi
+        // simultáneas (doble clic, dos pestañas) podían las dos leer el
+        // mismo estado "viejo", pasar la validación de arriba, y las dos
+        // escribir. Si la cita ya no está en el estado esperado cuando el
+        // candado se libera, es que alguien más ganó la carrera primero.
         if ($estadoId === 7) {
             $medicoId = intval($this->getMedicoActual()['id'] ?? 0);
-            $enAtencion = Clinica::getCitaEnAtencion($medicoId, $citaId);
-            if ($enAtencion) {
+            $resultado = Clinica::iniciarAtencionSiPosible($citaId, $medicoId);
+            if (!$resultado['ok']) {
+                if ($resultado['motivo'] === 'ocupado') {
+                    $enAtencion = $resultado['ocupadaCon'];
+                    $this->redirectWithMessage(
+                        'Ya tiene una consulta en curso con '
+                        . trim(
+                            $enAtencion['paciente_nombres'] . ' '
+                            . $enAtencion['paciente_apellidos']
+                        )
+                        . ' (cita #' . $enAtencion['id'] . '). Finalícela antes '
+                        . 'de iniciar otra.'
+                    );
+                }
                 $this->redirectWithMessage(
-                    'Ya tiene una consulta en curso con '
-                    . trim(
-                        $enAtencion['paciente_nombres'] . ' '
-                        . $enAtencion['paciente_apellidos']
-                    )
-                    . ' (cita #' . $enAtencion['id'] . '). Finalícela antes '
-                    . 'de iniciar otra.'
+                    'Esta cita ya fue actualizada por otra solicitud. Recargue la página e intente de nuevo.'
                 );
             }
+        } elseif (!Clinica::actualizarEstadoCitaSiEstaba($citaId, $estadoActual, $estadoId)) {
+            $this->redirectWithMessage(
+                'Esta cita ya fue actualizada por otra solicitud. Recargue la página e intente de nuevo.'
+            );
         }
 
-        Clinica::actualizarEstadoCita($citaId, $estadoId);
         Clinica::crearNotificacion(
             'Estado de cita',
             $mensaje . ' Cita #' . $citaId
@@ -457,7 +473,15 @@ class DoctoresController extends PrivateController
             );
         }
 
-        Clinica::actualizarEstadoCita($citaId, 3);
+        // Candado atómico: si dos clics de "Finalizar" llegan casi juntos,
+        // solo el primero encuentra la cita todavía "En Atención" y
+        // escribe; el segundo ve que ya cambió y no duplica notificación
+        // ni auditoría (ver actualizarEstadoCitaSiEstaba en ClinicaAvanzada).
+        if (!Clinica::actualizarEstadoCitaSiEstaba($citaId, $estadoActual, 3)) {
+            $this->redirectWithMessage(
+                'Esta consulta ya fue finalizada por otra solicitud.'
+            );
+        }
         Clinica::crearNotificacion(
             'Estado de cita',
             'Consulta finalizada. Cita #' . $citaId

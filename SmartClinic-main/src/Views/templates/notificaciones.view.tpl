@@ -16,7 +16,11 @@
     <strong>{{tipo}}</strong> · <span style="color:#64748b;">{{fecha_creacion}}</span>
     <p style="margin:8px 0;">{{mensaje}}</p>
     {{ifnot estaLeida}}
-    <a href="index.php?page=NotificacionesController&action=read&id={{id}}" class="btn btn--outline" style="padding:6px 10px;">Marcar leída</a>
+    <form method="POST" action="index.php?page=NotificacionesController&action=read" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+      <input type="hidden" name="id" value="{{id}}">
+      <button type="submit" class="btn btn--outline" style="padding:6px 10px;">Marcar leída</button>
+    </form>
     {{endifnot estaLeida}}
   </article>
   {{endfor notificaciones}}

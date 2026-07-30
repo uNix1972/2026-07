@@ -86,6 +86,11 @@ CREATE TABLE IF NOT EXISTS medico (
     apellidos VARCHAR(100) NOT NULL,
     num_colegiatura VARCHAR(50) NOT NULL UNIQUE,
     telefono VARCHAR(20) NOT NULL,
+    -- Igual que producto/proveedor: en vez de borrar médicos con historial de
+    -- citas, se desactivan (INA) para que dejen de aparecer en Agenda/Citas
+    -- sin perder su información. Solo se permite el borrado definitivo si el
+    -- médico nunca tuvo ninguna cita (ver MedicosController::eliminar()).
+    estado CHAR(3) NOT NULL DEFAULT 'ACT',
     FOREIGN KEY (especialidad_id) REFERENCES especialidad (id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
 
@@ -1381,3 +1386,41 @@ VALUES
         CURRENT_TIMESTAMP,
         '2099-12-31 23:59:59'
     );
+
+-- cambios para agregar el módulo de Enfermeras
+-- Mismo patrón que medico/medico_centro_salud: la enfermera nunca se borra
+-- si ya tuvo alguna asignación a un centro (se desactiva en su lugar), y la
+-- relación con centros de salud es muchos-a-muchos porque una enfermera
+-- puede atender en varias ubicaciones. usuario_id es un vínculo opcional y
+-- único con una cuenta de acceso ya existente (no crea cuentas nuevas).
+
+CREATE TABLE IF NOT EXISTS enfermera (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombres VARCHAR(100) NOT NULL,
+    apellidos VARCHAR(100) NOT NULL,
+    num_colegiatura VARCHAR(50) NOT NULL UNIQUE,
+    telefono VARCHAR(20) NOT NULL,
+    estado CHAR(3) NOT NULL DEFAULT 'ACT',
+    usuario_id INT NULL UNIQUE,
+    FOREIGN KEY (usuario_id) REFERENCES usuario (usercod) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS enfermera_centro_salud (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    enfermera_id INT NOT NULL,
+    centro_salud_id INT NOT NULL,
+    area VARCHAR(50) NOT NULL,
+    estado CHAR(3) NOT NULL DEFAULT 'ACT',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_enfermera_centro_salud (enfermera_id, centro_salud_id),
+    FOREIGN KEY (enfermera_id) REFERENCES enfermera (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (centro_salud_id) REFERENCES centro_salud (id) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+INSERT IGNORE INTO funciones (funcionId, funcionNombre, funcionDescripcion, funcionStatus) VALUES
+    (40, 'Controllers\\EnfermerasController', 'Controlador CRUD Enfermeras', 'ACT'),
+    (41, 'Menu_Enfermeras', 'Acceso al menú Enfermeras', 'ACT');
+
+INSERT IGNORE INTO funciones_roles (funcionRolId, funcionId, rolId, frStatus, frFechaInicio, frFechaFin) VALUES
+    (74, 41, 2, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59');

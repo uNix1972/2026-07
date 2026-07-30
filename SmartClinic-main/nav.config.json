@@ -33,6 +33,11 @@
       "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M19 6h-2a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-7 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm6 10H6V8h12v10z'/></svg></span>&nbsp;Médicos"
     },
     {
+      "id": "Menu_Enfermeras",
+      "nav_url": "index.php?page=EnfermerasController&action=index",
+      "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-4H7v-2h4V7h2v4h4v2h-4z'/></svg></span>&nbsp;Enfermeras"
+    },
+    {
       "id": "Menu_Pacientes",
       "nav_url": "index.php?page=PacientesController&action=index",
       "nav_label": "<span class='nav-icon' aria-hidden='true'><svg viewBox='0 0 24 24' role='img'><path d='M12 12c2.76 0 5-2.24 5-5S14.76 2 12 2 7 4.24 7 7s2.24 5 5 5zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z'/></svg></span>&nbsp;Pacientes"
