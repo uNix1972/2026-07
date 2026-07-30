@@ -15,11 +15,14 @@ class DoctoresController extends PrivateController
 {
     public function run(): void
     {
+        // "confirmarLlegada" (poner en espera) y "preclinica"/"guardarSignos"
+        // (signos vitales) ya no viven en el portal del doctor: ahora los
+        // maneja la enfermera/recepción (poner en espera se hace desde el
+        // módulo de Citas; la preclínica pasará al futuro portal de
+        // enfermería). El médico solo inicia la consulta, registra el
+        // historial y finaliza.
         $action = $_GET['action'] ?? 'index';
         switch ($action) {
-            case 'confirmarLlegada':
-                $this->transicionar(6, 'Paciente marcado en sala de espera.');
-                break;
             case 'iniciarAtencion':
                 $this->transicionar(7, 'Consulta iniciada.');
                 break;
@@ -28,12 +31,6 @@ class DoctoresController extends PrivateController
                 break;
             case 'guardarHistorial':
                 $this->guardarHistorial();
-                break;
-            case 'guardarSignos':
-                $this->guardarSignos();
-                break;
-            case 'preclinica':
-                $this->preclinica();
                 break;
             case 'expediente':
                 $this->expediente();
@@ -71,28 +68,12 @@ class DoctoresController extends PrivateController
         $agendaCompleta = $this->ordenarAgendaPorPrioridad(Clinica::getAgendaDoctor($medicoId));
         foreach ($agendaCompleta as &$item) {
             $estadoId = intval($item['estado_id']);
-            $tieneSignos = $item['temperatura'] !== null;
-            $esHoy = substr((string)($item['fecha_hora'] ?? ''), 0, 10) === $hoy;
-            $item['puedeConfirmarLlegada'] = $estadoId === 2;
-            $item['puedeIniciarAtencion'] = in_array($estadoId, [2, 6], true) && $tieneSignos;
-            $item['faltaPreclinica'] = in_array($estadoId, [2, 6], true) && !$tieneSignos;
             $item['puedeFinalizar'] = $estadoId === 7;
             // "No asistió" solo tiene sentido mientras la cita sigue
             // Confirmada (el paciente todavía no ha llegado). En cuanto se
             // marca "En espera" es porque ya llegó y está físicamente en
             // el centro, así que decir que "no asistió" ya no es correcto.
             $item['puedeNoAsistio'] = $estadoId === 2;
-            // La Preclínica (toma de signos vitales) solo debe poder
-            // abrirse una vez que el paciente ya está "En espera" (o más
-            // adelante, "En atención"): si todavía está Confirmada es
-            // porque no se ha confirmado que llegó al centro, y no tiene
-            // sentido tomarle signos vitales a alguien que no ha llegado.
-            // Se deja disponible también en "En atención" a propósito: no
-            // desaparece al guardarla, sigue ahí para poder corregir o
-            // completar un dato durante la consulta (el texto del botón
-            // cambia a "Editar preclínica" una vez que ya tiene datos).
-            $item['puedeAbrirPreclinica'] = $esHoy && in_array($estadoId, [6, 7], true);
-            $item['tieneSignos'] = $tieneSignos;
             // El PDF es el resumen de la consulta (diagnóstico, tratamiento,
             // receta); no existe nada que mostrar hasta que la cita esté
             // Completada, así que antes de eso no tiene sentido ofrecerlo.
@@ -114,15 +95,13 @@ class DoctoresController extends PrivateController
         $agenda = $this->filtrarAgendaPorPeriodo($agendaCompleta, $agendaFiltro);
         $agenda = $this->filtrarAgendaPorCentro($agenda, $centroFiltro);
 
-        // La toma de signos vitales vive únicamente en Preclínica (Paso 2).
-        // Aquí solo se muestra si a la cita ya se le tomó la preclínica o
-        // todavía le falta, para guiar al médico al lugar correcto.
+        // Poner "En Espera" y tomar signos vitales ya no son tareas del
+        // médico (los hace la enfermera/recepción), así que "Iniciar
+        // consulta" ya no depende de que existan signos vitales guardados.
         $sala = Clinica::getSalaEspera($medicoId, date('Y-m-d'));
         foreach ($sala as &$item) {
             $estadoId = intval($item['estado_id']);
-            $tieneSignos = $item['temperatura'] !== null;
-            $item['puedeIniciarAtencion'] = $estadoId === 6 && $tieneSignos;
-            $item['faltaPreclinica'] = $estadoId === 6 && !$tieneSignos;
+            $item['puedeIniciarAtencion'] = $estadoId === 6;
             // Una vez en atención, la Sala de espera también debe poder
             // finalizar la consulta directamente, sin obligar al doctor a
             // subir hasta la tabla de Agenda para hacerlo.
@@ -396,14 +375,6 @@ class DoctoresController extends PrivateController
                 . '" a "' . Clinica::nombreEstado($estadoId) . '".'
             );
         }
-        if ($estadoId === 7 && $cita['temperatura'] === null) {
-            $this->redirectWithMessage(
-                'Debe completar la preclínica (signos vitales) antes de '
-                . 'iniciar la atención.',
-                'preclinica',
-                $citaId
-            );
-        }
         // El cambio de estado en sí se hace con un candado atómico (ver
         // ClinicaAvanzada) en vez de "leer estado -> validar en PHP ->
         // escribir": eso dejaba una ventana donde dos solicitudes casi
@@ -546,142 +517,6 @@ class DoctoresController extends PrivateController
             ['cita_id' => $citaId]
         );
         $this->redirectWithMessage('Historial clínico guardado.');
-    }
-
-    private function guardarSignos(): void
-    {
-        $this->validateCsrf();
-        $citaId = intval($_POST['cita_id'] ?? 0);
-        $cita = $this->requireCitaPropia($citaId);
-        $returnTo = ($_POST['return_to'] ?? '') === 'preclinica'
-            ? 'preclinica'
-            : '';
-
-        if (!in_array(intval($cita['estado_id']), [2, 6, 7], true)) {
-            $this->redirectWithMessage(
-                'Solo se pueden registrar signos vitales de citas confirmadas, '
-                . 'en espera o en atención.',
-                $returnTo,
-                $citaId
-            );
-        }
-
-        $ranges = [
-            'temperatura' => [30, 45],
-            'presion_sistolica' => [50, 260],
-            'presion_diastolica' => [30, 180],
-            'frecuencia_cardiaca' => [20, 250],
-            'frecuencia_respiratoria' => [5, 80],
-            'saturacion_oxigeno' => [50, 100],
-            'peso' => [1, 500],
-            'talla' => [30, 250],
-        ];
-        $datos = [];
-        foreach ($ranges as $field => $range) {
-            $raw = trim((string)($_POST[$field] ?? ''));
-            // El campo llegó vacío del formulario. El HTML ya lo marca
-            // "required", pero eso se puede saltar (formularios armados a
-            // mano, extensiones, etc.), así que se rechaza también aquí:
-            // antes esto guardaba silenciosamente NULL en todos los signos
-            // y mostraba "guardado correctamente" igual, dejando pensar
-            // que sí se registraron cuando en realidad quedaron vacíos.
-            if ($raw === '') {
-                $this->redirectWithMessage(
-                    'Complete todos los signos vitales antes de guardar.',
-                    $returnTo,
-                    $citaId
-                );
-            }
-            $datos[$field] = floatval($raw);
-            if (
-                $datos[$field] < $range[0]
-                || $datos[$field] > $range[1]
-            ) {
-                $this->redirectWithMessage(
-                    'Revise los rangos de los signos vitales.',
-                    $returnTo,
-                    $citaId
-                );
-            }
-        }
-        $datos['notas'] = substr(
-            trim((string)($_POST['notas'] ?? '')),
-            0,
-            500
-        );
-
-        Clinica::guardarSignosVitales($citaId, $datos);
-        AuditLogger::log(
-            'SIGNOS_VITALES',
-            'Doctores',
-            'Signos vitales actualizados',
-            ['cita_id' => $citaId]
-        );
-        $this->redirectWithMessage(
-            'Signos vitales guardados correctamente.',
-            $returnTo,
-            $citaId
-        );
-    }
-
-    private function preclinica(): void
-    {
-        Site::addLink('public/css/clinical-record.css');
-        $medico = $this->getMedicoActual();
-        if (!$medico) {
-            http_response_code(403);
-            exit('La cuenta no está vinculada con un médico.');
-        }
-
-        Clinica::autoCancelarPendientesVencidas();
-
-        // Preclínica es para pacientes de hoy que ya confirmaron/llegaron:
-        // no tiene sentido tomar signos vitales de una cita futura, de una
-        // que todavía no se paga, ni de una que ya terminó.
-        $hoy = date('Y-m-d');
-        $agendaCompleta = Clinica::getAgendaDoctor(intval($medico['id']));
-        $agenda = array_values(array_filter(
-            $agendaCompleta,
-            static function (array $item) use ($hoy): bool {
-                $esHoy = substr((string)($item['fecha_hora'] ?? ''), 0, 10) === $hoy;
-                return $esHoy && in_array(intval($item['estado_id']), [2, 6, 7], true);
-            }
-        ));
-        $citaId = intval($_GET['cita_id'] ?? ($agenda[0]['id'] ?? 0));
-        $cita = $citaId > 0 ? $this->requireCitaPropia($citaId, false) : null;
-
-        foreach ($agenda as &$item) {
-            $item['selected'] = intval($item['id']) === $citaId
-                ? 'selected'
-                : '';
-            $item['signos_estado'] = $item['temperatura'] !== null
-                ? 'Registrados'
-                : 'Pendientes';
-        }
-        unset($item);
-
-        Renderer::render('preclinica', [
-            'medico_nombres' => $medico['nombres'] ?? '',
-            'medico_apellidos' => $medico['apellidos'] ?? '',
-            'agenda' => $agenda,
-            'hay_cita' => (bool)$cita,
-            'cita_id' => $cita['id'] ?? '',
-            'fecha_hora' => $cita['fecha_hora'] ?? '',
-            'paciente_nombres' => $cita['paciente_nombres'] ?? '',
-            'paciente_apellidos' => $cita['paciente_apellidos'] ?? '',
-            'nombre_estado' => $cita['nombre_estado'] ?? '',
-            'temperatura' => $cita['temperatura'] ?? '',
-            'presion_sistolica' => $cita['presion_sistolica'] ?? '',
-            'presion_diastolica' => $cita['presion_diastolica'] ?? '',
-            'frecuencia_cardiaca' => $cita['frecuencia_cardiaca'] ?? '',
-            'frecuencia_respiratoria' => $cita['frecuencia_respiratoria'] ?? '',
-            'saturacion_oxigeno' => $cita['saturacion_oxigeno'] ?? '',
-            'peso' => $cita['peso'] ?? '',
-            'talla' => $cita['talla'] ?? '',
-            'signos_notas' => $cita['signos_notas'] ?? '',
-            'csrf_token' => Security::getCsrfToken(),
-            'msg' => $_GET['msg'] ?? '',
-        ]);
     }
 
     private function expediente(): void

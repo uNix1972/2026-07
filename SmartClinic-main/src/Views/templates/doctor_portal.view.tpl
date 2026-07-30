@@ -3,7 +3,7 @@
     <div class="clinical-hero__content">
       <span class="clinical-hero__eyebrow">SmartClinic · Atención médica</span>
       <h1>Portal de doctores</h1>
-      <p>Agenda, signos vitales y expediente clínico por cada atención, todo en un mismo lugar.</p>
+      <p>Agenda, sala de espera y expediente clínico por cada atención, todo en un mismo lugar.</p>
     </div>
   </header>
 
@@ -72,17 +72,6 @@
           <td style="padding:12px;">Temp. {{temperatura}} °C<br>PA {{presion_sistolica}}/{{presion_diastolica}}<br>FC {{frecuencia_cardiaca}} · FR {{frecuencia_respiratoria}}<br>SpO₂ {{saturacion_oxigeno}}%</td>
           <td style="padding:12px;">{{nombre_estado}}</td>
           <td style="padding:12px; display:flex; gap:8px; flex-wrap:wrap;">
-            {{if puedeAbrirPreclinica}}
-            {{if tieneSignos}}
-            <a class="btn btn--outline" href="index.php?page=DoctoresController&action=preclinica&cita_id={{id}}">Editar preclínica</a>
-            {{endif tieneSignos}}
-            {{ifnot tieneSignos}}
-            <a class="btn btn--outline" href="index.php?page=DoctoresController&action=preclinica&cita_id={{id}}">Preclínica</a>
-            {{endifnot tieneSignos}}
-            {{endif puedeAbrirPreclinica}}
-            {{if puedeConfirmarLlegada}}
-            <form method="POST" action="index.php?page=DoctoresController&action=confirmarLlegada"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--outline" type="submit">En espera</button></form>
-            {{endif puedeConfirmarLlegada}}
             {{if puedeNoAsistio}}
             <form method="POST" action="index.php?page=DoctoresController&action=noAsistio" data-confirm="¿Confirma que el paciente no asistió a esta cita?"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--outline" type="submit">No asistió</button></form>
             {{endif puedeNoAsistio}}
@@ -120,10 +109,9 @@
             <form method="POST" action="index.php?page=DoctoresController&action=iniciarAtencion">
               <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
               <input type="hidden" name="cita_id" value="{{id}}">
-              <button type="submit" class="btn btn--outline">Iniciar atención</button>
+              <button type="submit" class="btn btn--outline">Iniciar consulta</button>
             </form>
             {{endif puedeIniciarAtencion}}
-            {{if faltaPreclinica}}<a class="btn btn--outline" href="index.php?page=DoctoresController&action=preclinica&cita_id={{id}}">Tomar preclínica</a>{{endif faltaPreclinica}}
             {{if puedeFinalizar}}
             <form method="POST" action="index.php?page=DoctoresController&action=finalizar">
               <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
@@ -154,7 +142,7 @@
             {{endif puedeFinalizar}}
             {{endfor agendaTodas}}
           </select>
-          <small style="color:#64748b;">Solo se listan citas "En Atención". Use "Iniciar atención" en la agenda primero.</small>
+          <small style="color:#64748b;">Solo se listan citas "En Atención". Use "Iniciar consulta" en la sala de espera primero.</small>
         </div>
         <div id="consulta_signos_resumen" class="clinical-vitals-summary" style="border-radius:14px; padding:14px;">
           <strong>Signos vitales de la cita seleccionada</strong>

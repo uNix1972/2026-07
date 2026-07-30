@@ -3,12 +3,20 @@
 namespace Controllers\Security;
 
 use Controllers\PrivateController;
+use Dao\Enfermeras as DaoEnfermeras;
+use Dao\Medicos as DaoMedicos;
+use Dao\Pacientes as DaoPacientes;
 use Dao\Security\Users as DaoUsers;
 use Utilities\Site;
 use Views\Renderer;
 
 /**
  * Creates, displays, updates, and deletes users with one or more roles.
+ *
+ * Also lets an admin link the account to an existing médico, paciente, or
+ * enfermera record — three independent optional relationships, each a
+ * nullable/unique usuario_id column on those tables (no new account is
+ * ever created from here, only an existing record gets linked/unlinked).
  */
 class User extends PrivateController
 {
@@ -16,6 +24,9 @@ class User extends PrivateController
     private string $mode = "DSP";
     private array $availableRoles = [];
     private array $selectedRoleIds = [];
+    private int $medicoId = 0;
+    private int $pacienteId = 0;
+    private int $enfermeraId = 0;
 
     private array $modeDescriptions = [
         "DSP" => "Detalle del Usuario %s",
@@ -46,6 +57,7 @@ class User extends PrivateController
                 $this->handlePost();
             }
             $this->setViewData();
+            Site::addEndScript('public/js/kardex-autocomplete.js');
             Renderer::render("security/user", $this->viewData);
         } catch (\Exception $ex) {
             Site::redirectToWithMsg(
@@ -87,6 +99,23 @@ class User extends PrivateController
 
         $this->user = array_merge($this->user, $userData);
         $this->selectedRoleIds = $this->parseRoleIds($userData["role_ids"] ?? "");
+        $this->loadCurrentLinks($id);
+    }
+
+    /**
+     * Finds which médico/paciente/enfermera (if any) currently has its
+     * usuario_id pointing at this account, to preselect the pickers.
+     */
+    private function loadCurrentLinks(int $usuarioId): void
+    {
+        $medico = DaoMedicos::getByUsuarioId($usuarioId);
+        $this->medicoId = $medico ? (int) $medico["id"] : 0;
+
+        $paciente = DaoPacientes::getByUsuarioId($usuarioId);
+        $this->pacienteId = $paciente ? (int) $paciente["id"] : 0;
+
+        $enfermera = DaoEnfermeras::getByUsuarioId($usuarioId);
+        $this->enfermeraId = $enfermera ? (int) $enfermera["id"] : 0;
     }
 
     /**
@@ -140,6 +169,18 @@ class User extends PrivateController
                 : [];
         }
 
+        // A diferencia de roles/estado, el vínculo con médico/paciente/
+        // enfermera no otorga permisos por sí solo, así que SÍ se puede
+        // cambiar al editar la propia cuenta (no aplica el bloqueo de
+        // auto-edición usado arriba).
+        if (in_array($this->mode, ["INS", "UPD"], true)) {
+            $this->medicoId = \Utilities\Validators::sanitizeId($_POST["medico_id"] ?? 0) ?? 0;
+            $this->pacienteId = \Utilities\Validators::sanitizeId($_POST["paciente_id"] ?? 0) ?? 0;
+            $this->enfermeraId = \Utilities\Validators::sanitizeId($_POST["enfermera_id"] ?? 0) ?? 0;
+
+            $errors = array_merge($errors, $this->validateEntityLinks());
+        }
+
         if (\Utilities\Validators::IsEmpty($this->user["username"])) {
             $errors["username_error"] = "Nombre requerido";
         }
@@ -177,6 +218,67 @@ class User extends PrivateController
     }
 
     /**
+     * Confirms each selected médico/paciente/enfermera exists and is not
+     * already linked to a DIFFERENT account, before anything gets saved.
+     */
+    private function validateEntityLinks(): array
+    {
+        $errors = [];
+        $currentUserId = (int) ($this->user["usercod"] ?? 0);
+
+        if ($this->medicoId > 0) {
+            $medico = DaoMedicos::getMedicoById($this->medicoId);
+            if (!$medico) {
+                $errors["medico_error"] = "El médico seleccionado no existe.";
+            } elseif (
+                (int) ($medico["usuario_id"] ?? 0) > 0
+                && (int) $medico["usuario_id"] !== $currentUserId
+            ) {
+                $errors["medico_error"] = "Ese médico ya está vinculado a otra cuenta de usuario.";
+            }
+        }
+
+        if ($this->pacienteId > 0) {
+            $paciente = DaoPacientes::getPacienteById($this->pacienteId);
+            if (!$paciente) {
+                $errors["paciente_error"] = "El paciente seleccionado no existe.";
+            } elseif (
+                (int) ($paciente["usuario_id"] ?? 0) > 0
+                && (int) $paciente["usuario_id"] !== $currentUserId
+            ) {
+                $errors["paciente_error"] = "Ese paciente ya está vinculado a otra cuenta de usuario.";
+            }
+        }
+
+        if ($this->enfermeraId > 0) {
+            $enfermera = DaoEnfermeras::getEnfermeraById($this->enfermeraId);
+            if (!$enfermera) {
+                $errors["enfermera_error"] = "La enfermera seleccionada no existe.";
+            } elseif (
+                (int) ($enfermera["usuario_id"] ?? 0) > 0
+                && (int) $enfermera["usuario_id"] !== $currentUserId
+            ) {
+                $errors["enfermera_error"] = "Esa enfermera ya está vinculada a otra cuenta de usuario.";
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Shapes the three link IDs into the array Dao\Security\Users expects
+     * (null instead of 0 means "no vincular"/"quitar vínculo").
+     */
+    private function buildLinksPayload(): array
+    {
+        return [
+            "medico_id" => $this->medicoId > 0 ? $this->medicoId : null,
+            "paciente_id" => $this->pacienteId > 0 ? $this->pacienteId : null,
+            "enfermera_id" => $this->enfermeraId > 0 ? $this->enfermeraId : null,
+        ];
+    }
+
+    /**
      * Delegates atomic user and role writes to the DAO.
      */
     private function handlePost(): void
@@ -187,7 +289,11 @@ class User extends PrivateController
                     $this->user["userpswd"]
                 );
                 $this->user["userpswdchg"] = date("Y-m-d H:i:s");
-                DaoUsers::createUserWithRoles($this->user, $this->selectedRoleIds);
+                DaoUsers::createUserWithRoles(
+                    $this->user,
+                    $this->selectedRoleIds,
+                    $this->buildLinksPayload()
+                );
                 Site::redirectToWithMsg(
                     "index.php?page=Security_Users",
                     "Usuario creado correctamente"
@@ -195,7 +301,11 @@ class User extends PrivateController
                 break;
 
             case "UPD":
-                DaoUsers::updateUserWithRoles($this->user, $this->selectedRoleIds);
+                DaoUsers::updateUserWithRoles(
+                    $this->user,
+                    $this->selectedRoleIds,
+                    $this->buildLinksPayload()
+                );
                 Site::redirectToWithMsg(
                     "index.php?page=Security_Users",
                     "Usuario actualizado correctamente"
@@ -287,7 +397,145 @@ class User extends PrivateController
         $this->viewData["errorPswd"] = $this->user["userpswd_error"] ?? "";
         $this->viewData["errorEstado"] = $this->user["userest_error"] ?? "";
         $this->viewData["errorRoles"] = $this->user["roles_error"] ?? "";
+        $this->viewData["errorMedico"] = $this->user["medico_error"] ?? "";
+        $this->viewData["errorPaciente"] = $this->user["paciente_error"] ?? "";
+        $this->viewData["errorEnfermera"] = $this->user["enfermera_error"] ?? "";
         $this->viewData["u_usercod"] = $this->user["usercod"] ?? 0;
+
+        // A diferencia de "selects_locked" (roles/estado), aquí SOLO se
+        // bloquea en vista de detalle/eliminación: el vínculo con médico/
+        // paciente/enfermera sí se puede tocar al editar la propia cuenta.
+        $this->viewData["links_locked"] = $isReadonly;
+        $this->viewData = array_merge(
+            $this->viewData,
+            $this->buildComboMedicos($this->medicoId),
+            $this->buildComboPacientes($this->pacienteId),
+            $this->buildComboEnfermeras($this->enfermeraId)
+        );
+    }
+
+    /**
+     * Converts a plain options array into the escaped JSON string the
+     * sc-combo widget expects in its data-options attribute. Mismo patrón
+     * que CitasController::jsonAttrParaAutocompletar().
+     */
+    private function jsonAttrParaAutocompletar(array $opciones): string
+    {
+        return htmlspecialchars(
+            json_encode($opciones, JSON_UNESCAPED_UNICODE),
+            ENT_QUOTES,
+            'UTF-8'
+        );
+    }
+
+    /**
+     * Solo se ofrecen médicos/pacientes/enfermeras que no estén vinculados
+     * a NINGUNA cuenta, más el que ya está vinculado a esta misma cuenta
+     * (si se está editando), para que siga apareciendo seleccionado.
+     */
+    private function buildComboMedicos(int $selectedId): array
+    {
+        $currentUserId = (int) ($this->user["usercod"] ?? 0);
+        $disponibles = array_values(array_filter(
+            DaoMedicos::getAllMedicos(),
+            static function (array $medico) use ($currentUserId): bool {
+                $linkedTo = (int) ($medico["usuario_id"] ?? 0);
+                return $linkedTo === 0 || $linkedTo === $currentUserId;
+            }
+        ));
+
+        $items = array_map(
+            static function (array $medico): array {
+                return [
+                    "id" => (int) $medico["id"],
+                    "nombre" => "Dr/a " . trim($medico["nombres"] . " " . $medico["apellidos"])
+                        . " - " . (string) ($medico["nombre_especialidad"] ?? ""),
+                    "extra" => (string) ($medico["num_colegiatura"] ?? ""),
+                ];
+            },
+            $disponibles
+        );
+
+        $seleccionado = $this->buscarOpcionPorId($items, $selectedId);
+
+        return [
+            "medicosJsonAttr" => $this->jsonAttrParaAutocompletar($items),
+            "medicoIdSeleccionadoValue" => $seleccionado ? $seleccionado["id"] : 0,
+            "medicoNombreSeleccionado" => $seleccionado ? $seleccionado["nombre"] : "",
+        ];
+    }
+
+    private function buildComboPacientes(int $selectedId): array
+    {
+        $currentUserId = (int) ($this->user["usercod"] ?? 0);
+        $disponibles = array_values(array_filter(
+            DaoPacientes::getAllPacientes(),
+            static function (array $paciente) use ($currentUserId): bool {
+                $linkedTo = (int) ($paciente["usuario_id"] ?? 0);
+                return $linkedTo === 0 || $linkedTo === $currentUserId;
+            }
+        ));
+
+        $items = array_map(
+            static function (array $paciente): array {
+                return [
+                    "id" => (int) $paciente["id"],
+                    "nombre" => trim($paciente["nombres"] . " " . $paciente["apellidos"])
+                        . " (" . $paciente["identidad"] . ")",
+                    "extra" => (string) ($paciente["telefono"] ?? ""),
+                ];
+            },
+            $disponibles
+        );
+
+        $seleccionado = $this->buscarOpcionPorId($items, $selectedId);
+
+        return [
+            "pacientesJsonAttr" => $this->jsonAttrParaAutocompletar($items),
+            "pacienteIdSeleccionadoValue" => $seleccionado ? $seleccionado["id"] : 0,
+            "pacienteNombreSeleccionado" => $seleccionado ? $seleccionado["nombre"] : "",
+        ];
+    }
+
+    private function buildComboEnfermeras(int $selectedId): array
+    {
+        $currentUserId = (int) ($this->user["usercod"] ?? 0);
+        $disponibles = array_values(array_filter(
+            DaoEnfermeras::getAllEnfermeras(),
+            static function (array $enfermera) use ($currentUserId): bool {
+                $linkedTo = (int) ($enfermera["usuario_id"] ?? 0);
+                return $linkedTo === 0 || $linkedTo === $currentUserId;
+            }
+        ));
+
+        $items = array_map(
+            static function (array $enfermera): array {
+                return [
+                    "id" => (int) $enfermera["id"],
+                    "nombre" => trim($enfermera["nombres"] . " " . $enfermera["apellidos"]),
+                    "extra" => (string) ($enfermera["num_colegiatura"] ?? ""),
+                ];
+            },
+            $disponibles
+        );
+
+        $seleccionado = $this->buscarOpcionPorId($items, $selectedId);
+
+        return [
+            "enfermerasJsonAttr" => $this->jsonAttrParaAutocompletar($items),
+            "enfermeraIdSeleccionadoValue" => $seleccionado ? $seleccionado["id"] : 0,
+            "enfermeraNombreSeleccionado" => $seleccionado ? $seleccionado["nombre"] : "",
+        ];
+    }
+
+    private function buscarOpcionPorId(array $opciones, int $id): ?array
+    {
+        foreach ($opciones as $opcion) {
+            if ($opcion["id"] === $id) {
+                return $opcion;
+            }
+        }
+        return null;
     }
 
     /**

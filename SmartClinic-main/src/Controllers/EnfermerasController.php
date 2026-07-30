@@ -5,7 +5,6 @@ namespace Controllers;
 use Dao\CentroSalud as DaoCentroSalud;
 use Dao\EnfermeraCentroSalud as DaoEnfermeraCentroSalud;
 use Dao\Enfermeras as DaoEnfermeras;
-use Dao\Security\Users as DaoUsers;
 use Utilities\AuditLogger;
 use Utilities\Security;
 use Utilities\Site;
@@ -17,9 +16,7 @@ use Views\Renderer;
  * (listado con buscador/paginación, crear/editar con asignación de centros
  * de salud, desactivar/activar en vez de borrar), simplificado porque las
  * enfermeras no tienen citas ni conflicto de sala: varias pueden compartir
- * la misma área/turno en un centro. Además incluye un campo opcional para
- * vincular la enfermera a una cuenta de usuario YA EXISTENTE (no crea
- * cuentas nuevas).
+ * la misma área/turno en un centro.
  */
 class EnfermerasController extends PublicController
 {
@@ -76,7 +73,6 @@ class EnfermerasController extends PublicController
             // única opción es Desactivar/Activar para no perder su
             // historial.
             $enfermera["puedeEliminar"] = !((bool) ($enfermera["tiene_asignaciones"] ?? false));
-            $enfermera["tieneUsuario"] = !empty($enfermera["usuario_username"]);
         }
         unset($enfermera);
 
@@ -197,7 +193,6 @@ class EnfermerasController extends PublicController
                     $data["apellidos"],
                     $data["num_colegiatura"],
                     $data["telefono"],
-                    $data["usuario_id"] > 0 ? $data["usuario_id"] : null,
                     $assignments
                 );
 
@@ -207,8 +202,7 @@ class EnfermerasController extends PublicController
                     "Enfermera creada: " . $data["nombres"] . " " . $data["apellidos"],
                     [
                         "enfermera_id" => $newId,
-                        "centro_salud_ids" => array_column($assignments, "centro_salud_id"),
-                        "usuario_id" => $data["usuario_id"]
+                        "centro_salud_ids" => array_column($assignments, "centro_salud_id")
                     ]
                 );
             } catch (\Throwable $error) {
@@ -239,7 +233,6 @@ class EnfermerasController extends PublicController
             exit;
         }
 
-        $enfermera["usuario_id"] = (int) ($enfermera["usuario_id"] ?? 0);
         $assignments = DaoEnfermeraCentroSalud::getActivosByEnfermera($id);
 
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -274,7 +267,6 @@ class EnfermerasController extends PublicController
                     $enfermera["apellidos"],
                     $enfermera["num_colegiatura"],
                     $enfermera["telefono"],
-                    $enfermera["usuario_id"] > 0 ? $enfermera["usuario_id"] : null,
                     $assignments
                 );
 
@@ -284,8 +276,7 @@ class EnfermerasController extends PublicController
                     "Enfermera actualizada: " . $enfermera["nombres"] . " " . $enfermera["apellidos"],
                     [
                         "enfermera_id" => $id,
-                        "centro_salud_ids" => array_column($assignments, "centro_salud_id"),
-                        "usuario_id" => $enfermera["usuario_id"]
+                        "centro_salud_ids" => array_column($assignments, "centro_salud_id")
                     ]
                 );
             } catch (\Throwable $error) {
@@ -475,8 +466,7 @@ class EnfermerasController extends PublicController
             "nombres" => "",
             "apellidos" => "",
             "num_colegiatura" => "",
-            "telefono" => "",
-            "usuario_id" => 0
+            "telefono" => ""
         ];
     }
 
@@ -487,8 +477,7 @@ class EnfermerasController extends PublicController
             "apellidos" => Validators::sanitizeString($_POST["apellidos"] ?? "", 100),
             "num_colegiatura" =>
                 Validators::sanitizeString($_POST["num_colegiatura"] ?? "", 50),
-            "telefono" => Validators::sanitizeString($_POST["telefono"] ?? "", 20),
-            "usuario_id" => Validators::sanitizeId($_POST["usuario_id"] ?? 0) ?? 0
+            "telefono" => Validators::sanitizeString($_POST["telefono"] ?? "", 20)
         ];
     }
 
@@ -502,12 +491,6 @@ class EnfermerasController extends PublicController
         }
         if (DaoEnfermeras::existsNumColegiatura($data["num_colegiatura"], $excludeId)) {
             return "Ya existe una enfermera con ese número de colegiatura.";
-        }
-        if (
-            (int) $data["usuario_id"] > 0
-            && !DaoEnfermeras::usuarioDisponible((int) $data["usuario_id"], $excludeId)
-        ) {
-            return "La cuenta de usuario seleccionada no está disponible para vincular.";
         }
 
         return null;
@@ -608,32 +591,6 @@ class EnfermerasController extends PublicController
         );
     }
 
-    /**
-     * Arma las opciones del selector "vincular a un usuario": cuentas
-     * activas todavía no vinculadas a nadie, más la cuenta actualmente
-     * vinculada a esta enfermera (si se está editando), para que siga
-     * apareciendo seleccionada en el formulario.
-     */
-    private function buildUsuarios(int $selectedId, int $excludeEnfermeraId = 0): array
-    {
-        $usuarios = DaoEnfermeras::getUsuariosDisponibles($excludeEnfermeraId);
-
-        if ($selectedId > 0 && !in_array($selectedId, array_map("intval", array_column($usuarios, "usercod")), true)) {
-            $current = DaoUsers::getUserById($selectedId);
-            if ($current) {
-                $usuarios[] = $current;
-            }
-        }
-
-        return array_map(
-            function (array $usuario) use ($selectedId): array {
-                $usuario["selected"] = (int) $usuario["usercod"] === $selectedId;
-                return $usuario;
-            },
-            $usuarios
-        );
-    }
-
     private function renderCreate(
         array $data,
         array $assignments,
@@ -664,7 +621,6 @@ class EnfermerasController extends PublicController
             "centros" => $centros,
             "sinCentros" => count($centros) === 0,
             "puedeGuardar" => count($centros) > 0,
-            "usuarios" => $this->buildUsuarios((int) $data["usuario_id"], $excludeEnfermeraId),
             "error" => $error
         ]);
 

@@ -325,4 +325,46 @@ class Medicos extends Table
             ["id" => $id]
         );
     }
+
+    /**
+     * Busca el médico actualmente vinculado a una cuenta de usuario (si
+     * hay alguno). Se usa desde la pantalla de Usuarios para precargar el
+     * buscador de "Médico vinculado" al editar una cuenta existente.
+     */
+    public static function getByUsuarioId(int $usuarioId)
+    {
+        return parent::obtenerUnRegistro(
+            "SELECT * FROM medico WHERE usuario_id = :usuario_id",
+            ["usuario_id" => $usuarioId]
+        );
+    }
+
+    /**
+     * Quita el vínculo de cuenta de cualquier médico que hoy tenga esta
+     * usuario_id. Se llama SIEMPRE antes de vincularUsuario(), para que
+     * cambiar la selección en el formulario de Usuarios no deje dos
+     * médicos apuntando (por error) a la misma cuenta.
+     */
+    public static function desvincularUsuario(int $usuarioId, &$conn = null): bool
+    {
+        return parent::executeNonQuery(
+            "UPDATE medico SET usuario_id = NULL WHERE usuario_id = :usuario_id",
+            ["usuario_id" => $usuarioId],
+            $conn
+        );
+    }
+
+    /**
+     * Vincula un médico puntual con una cuenta de usuario. El llamador
+     * (Dao\Security\Users) es responsable de validar antes que ese médico
+     * no esté ya vinculado a OTRA cuenta distinta.
+     */
+    public static function vincularUsuario(int $medicoId, int $usuarioId, &$conn = null): bool
+    {
+        return parent::executeNonQuery(
+            "UPDATE medico SET usuario_id = :usuario_id WHERE id = :id",
+            ["id" => $medicoId, "usuario_id" => $usuarioId],
+            $conn
+        );
+    }
 }

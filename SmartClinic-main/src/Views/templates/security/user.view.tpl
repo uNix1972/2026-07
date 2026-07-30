@@ -42,6 +42,48 @@
     .form-card { padding: 1.25rem; }
     .roles-grid { grid-template-columns: 1fr; }
   }
+
+  /* Barra de búsqueda con autocompletar, mismo patrón sc-combo usado en
+     Kárdex/Inventario/Médicos/Citas. Ver public/js/kardex-autocomplete.js. */
+  .sc-combo { position: relative; }
+  .sc-combo-input {
+    width: 100%;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font: inherit;
+    box-sizing: border-box;
+  }
+  .sc-combo-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 20;
+  }
+  .sc-combo-option {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: .95rem;
+    color: #111827;
+  }
+  .sc-combo-option:hover,
+  .sc-combo-option.is-active {
+    background: #EAF5FD;
+  }
+  .sc-combo-empty {
+    padding: 10px 14px;
+    color: #64748b;
+    font-size: .9rem;
+  }
+  .links-grid { display: grid; gap: 1rem; }
+  .links-hint { color: #5f6f83; font-size: .8rem; margin: -.3rem 0 0; }
 </style>
 
 <div class="form-card">
@@ -140,6 +182,46 @@
       </div>
       {{if errorRoles}}<div class="error">{{errorRoles}}</div>{{endif errorRoles}}
       {{if warn_self}}<div class="self-note">&#9888; No puedes cambiar tus propios roles</div>{{endif warn_self}}
+    </fieldset>
+
+    <fieldset class="form-field" style="border:0; padding:0; margin-inline:0;">
+      <legend style="color:var(--cedro); font-weight:700; font-size:0.9rem; margin-bottom:0.55rem;">Vincular con un registro existente (opcional)</legend>
+      <p class="links-hint">Conecta esta cuenta con un médico, paciente o enfermera YA registrado. No crea ningún registro nuevo, y cada uno solo puede estar vinculado a una cuenta a la vez.</p>
+
+      <div class="links-grid">
+        <div class="form-field sc-combo" data-sc-combo>
+          <label for="medico_search">Médico vinculado</label>
+          <input type="text" id="medico_search" class="form-input sc-combo-input" autocomplete="off"
+                 placeholder="Buscar médico por nombre, especialidad o colegiatura..."
+                 value="{{medicoNombreSeleccionado}}" data-sc-combo-input data-options="{{medicosJsonAttr}}"
+                 {{if links_locked}}disabled{{endif links_locked}}>
+          <input type="hidden" id="medico_id" name="medico_id" data-sc-combo-hidden value="{{medicoIdSeleccionadoValue}}">
+          <div class="sc-combo-results" data-sc-combo-results hidden></div>
+          {{if errorMedico}}<div class="error">{{errorMedico}}</div>{{endif errorMedico}}
+        </div>
+
+        <div class="form-field sc-combo" data-sc-combo>
+          <label for="paciente_search">Paciente vinculado</label>
+          <input type="text" id="paciente_search" class="form-input sc-combo-input" autocomplete="off"
+                 placeholder="Buscar paciente por nombre o identidad..."
+                 value="{{pacienteNombreSeleccionado}}" data-sc-combo-input data-options="{{pacientesJsonAttr}}"
+                 {{if links_locked}}disabled{{endif links_locked}}>
+          <input type="hidden" id="paciente_id" name="paciente_id" data-sc-combo-hidden value="{{pacienteIdSeleccionadoValue}}">
+          <div class="sc-combo-results" data-sc-combo-results hidden></div>
+          {{if errorPaciente}}<div class="error">{{errorPaciente}}</div>{{endif errorPaciente}}
+        </div>
+
+        <div class="form-field sc-combo" data-sc-combo>
+          <label for="enfermera_search">Enfermera vinculada</label>
+          <input type="text" id="enfermera_search" class="form-input sc-combo-input" autocomplete="off"
+                 placeholder="Buscar enfermera por nombre o colegiatura..."
+                 value="{{enfermeraNombreSeleccionado}}" data-sc-combo-input data-options="{{enfermerasJsonAttr}}"
+                 {{if links_locked}}disabled{{endif links_locked}}>
+          <input type="hidden" id="enfermera_id" name="enfermera_id" data-sc-combo-hidden value="{{enfermeraIdSeleccionadoValue}}">
+          <div class="sc-combo-results" data-sc-combo-results hidden></div>
+          {{if errorEnfermera}}<div class="error">{{errorEnfermera}}</div>{{endif errorEnfermera}}
+        </div>
+      </div>
     </fieldset>
 
     <div class="form-actions">

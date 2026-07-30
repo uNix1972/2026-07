@@ -2,7 +2,7 @@
   <div class="form-card">
     <div style="margin-bottom:30px;">
       <h2 style="color:#033B9F;margin-bottom:10px;font-size:2.2rem;">Registrar Enfermera</h2>
-      <p style="color:#636366;">Completa los datos profesionales, lugares de atención y, si aplica, la cuenta de acceso.</p>
+      <p style="color:#636366;">Completa los datos profesionales y lugares de atención.</p>
     </div>
 
     {{if error}}
@@ -38,17 +38,6 @@
         <div class="form-group">
           <label for="telefono">Teléfono</label>
           <input id="telefono" type="tel" name="telefono" maxlength="20" value="{{telefono}}" required>
-        </div>
-
-        <div class="form-group" style="grid-column:1/-1;">
-          <label for="usuario_id">Cuenta de usuario vinculada (opcional)</label>
-          <select id="usuario_id" name="usuario_id">
-            <option value="">-- Sin cuenta vinculada --</option>
-            {{foreach usuarios}}
-            <option value="{{usercod}}" {{if selected}}selected{{endif selected}}>{{username}} ({{useremail}})</option>
-            {{endfor usuarios}}
-          </select>
-          <small style="color:#64748B;">Solo se listan cuentas activas que todavía no están vinculadas a otro médico, paciente o enfermera. Esto no crea una cuenta nueva.</small>
         </div>
       </div>
 

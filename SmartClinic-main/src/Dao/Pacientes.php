@@ -100,5 +100,41 @@ class Pacientes extends Table
         parent::executeNonQuery($sql, $params);
         return 1;
     }
+
+    /**
+     * Busca el paciente actualmente vinculado a una cuenta de usuario (si
+     * hay alguno). Se usa desde la pantalla de Usuarios para precargar el
+     * buscador de "Paciente vinculado" al editar una cuenta existente.
+     */
+    public static function getByUsuarioId(int $usuarioId)
+    {
+        $sql = "SELECT * FROM paciente WHERE usuario_id = :usuario_id";
+        return parent::obtenerUnRegistro($sql, ["usuario_id" => $usuarioId]);
+    }
+
+    /**
+     * Quita el vínculo de cuenta de cualquier paciente que hoy tenga esta
+     * usuario_id. Se llama SIEMPRE antes de vincularUsuario().
+     */
+    public static function desvincularUsuario(int $usuarioId, &$conn = null): bool
+    {
+        $sql = "UPDATE paciente SET usuario_id = NULL WHERE usuario_id = :usuario_id";
+        return parent::executeNonQuery($sql, ["usuario_id" => $usuarioId], $conn);
+    }
+
+    /**
+     * Vincula un paciente puntual con una cuenta de usuario. El llamador
+     * (Dao\Security\Users) es responsable de validar antes que ese
+     * paciente no esté ya vinculado a OTRA cuenta distinta.
+     */
+    public static function vincularUsuario(int $pacienteId, int $usuarioId, &$conn = null): bool
+    {
+        $sql = "UPDATE paciente SET usuario_id = :usuario_id WHERE id = :id";
+        return parent::executeNonQuery(
+            $sql,
+            ["id" => $pacienteId, "usuario_id" => $usuarioId],
+            $conn
+        );
+    }
 }
 

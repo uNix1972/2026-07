@@ -35,8 +35,11 @@ class ClinicaAvanzada extends Table
         7 => [3, 4],
     ];
 
+    // El médico ya no marca "En Espera" (2 -> 6): ahora esa transición la
+    // hace la enfermera/recepción desde el módulo de Citas. Al médico solo
+    // le queda poder registrar que el paciente no llegó.
     private const TRANSICIONES_DOCTOR = [
-        2 => [6, 5],
+        2 => [5],
         6 => [7, 5],
         7 => [3],
     ];
@@ -296,9 +299,15 @@ class ClinicaAvanzada extends Table
                 return ['ok' => false, 'motivo' => 'ocupado', 'ocupadaCon' => $enAtencion];
             }
 
+            // hora_inicio_atencion se calcula en PHP (no con NOW() de MySQL)
+            // por la misma razón que el resto de fechas del sistema: la
+            // conexión no fija su propia zona horaria (ver Dao.php), así
+            // que MySQL puede estar en UTC mientras la app trabaja en hora
+            // de Honduras. Este valor alimenta el timer de "Iniciar
+            // consulta" en el portal del doctor.
             parent::executeNonQuery(
-                "UPDATE cita SET estado_id = 7 WHERE id = :id",
-                ['id' => $citaId],
+                "UPDATE cita SET estado_id = 7, hora_inicio_atencion = :ahora WHERE id = :id",
+                ['id' => $citaId, 'ahora' => date('Y-m-d H:i:s')],
                 $conn
             );
             $conn->commit();

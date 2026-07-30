@@ -96,7 +96,6 @@
                     <th style="padding:14px 10px; white-space:nowrap;">N° Colegiatura</th>
                     <th style="padding:14px 10px;">Teléfono</th>
                     <th style="padding:14px 10px;">Centros / Áreas</th>
-                    <th style="padding:14px 10px;">Usuario vinculado</th>
                     <th style="padding:14px 10px; white-space:nowrap;">Estado</th>
                     <th style="padding:14px 10px; white-space:nowrap;">Acciones</th>
                 </tr>
@@ -137,11 +136,6 @@
                                 {{ifnot tieneCentros}}<span class="centros-modal__empty">Sin centro asignado</span>{{endifnot tieneCentros}}
                             </div>
                         </dialog>
-                    </td>
-
-                    <td style="padding:12px 10px; vertical-align:middle;">
-                        {{if tieneUsuario}}{{usuario_username}}{{endif tieneUsuario}}
-                        {{ifnot tieneUsuario}}<span style="color:#94A3B8;">Sin cuenta vinculada</span>{{endifnot tieneUsuario}}
                     </td>
 
                     <td style="padding:12px 10px; vertical-align:middle; white-space:nowrap;">{{estado}}</td>

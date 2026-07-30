@@ -2,6 +2,9 @@
 
 namespace Dao\Security;
 
+use Dao\Enfermeras;
+use Dao\Medicos;
+use Dao\Pacientes;
 use Dao\Table;
 
 /**
@@ -143,9 +146,15 @@ class Users extends Table
     }
 
     /**
-     * Creates an account and all selected role assignments in one transaction.
+     * Creates an account, all selected role assignments, and its optional
+     * links to a médico/paciente/enfermera record, in one transaction.
+     *
+     * $links accepts the optional keys "medico_id", "paciente_id",
+     * "enfermera_id" (nullable/omittable ints). The caller is expected to
+     * have already validated that each selected record is not linked to a
+     * DIFFERENT account — this method only applies the link.
      */
-    public static function createUserWithRoles(array $user, array $roleIds): int
+    public static function createUserWithRoles(array $user, array $roleIds, array $links = []): int
     {
         $conn = self::getConn();
         $conn->beginTransaction();
@@ -166,6 +175,7 @@ class Users extends Table
                 $conn
             );
             self::replaceRoles($userId, $roleIds, $conn);
+            self::applyEntityLinks($userId, $links, $conn);
             $conn->commit();
             return $userId;
         } catch (\Throwable $ex) {
@@ -177,9 +187,11 @@ class Users extends Table
     }
 
     /**
-     * Updates an account and replaces its complete active role set atomically.
+     * Updates an account, replaces its complete active role set, and
+     * replaces its optional links to a médico/paciente/enfermera record,
+     * all atomically. See createUserWithRoles() for the $links shape.
      */
-    public static function updateUserWithRoles(array $user, array $roleIds): void
+    public static function updateUserWithRoles(array $user, array $roleIds, array $links = []): void
     {
         $conn = self::getConn();
         $conn->beginTransaction();
@@ -201,12 +213,44 @@ class Users extends Table
                 $conn
             );
             self::replaceRoles((int) $user["usercod"], $roleIds, $conn);
+            self::applyEntityLinks((int) $user["usercod"], $links, $conn);
             $conn->commit();
         } catch (\Throwable $ex) {
             if ($conn->inTransaction()) {
                 $conn->rollBack();
             }
             throw $ex;
+        }
+    }
+
+    /**
+     * Replaces the account's link to a médico/paciente/enfermera record.
+     *
+     * Each of the three relationships is independent (a user could in
+     * theory be linked to more than one, though the UI only offers one at
+     * a time per role). For every relationship this first detaches
+     * whichever record currently holds this usuario_id, then attaches the
+     * newly selected one (if any) — same "replace" pattern used for roles,
+     * so leaving a picker empty simply unlinks it.
+     */
+    private static function applyEntityLinks(int $userId, array $links, &$conn = null): void
+    {
+        Medicos::desvincularUsuario($userId, $conn);
+        $medicoId = (int) ($links["medico_id"] ?? 0);
+        if ($medicoId > 0) {
+            Medicos::vincularUsuario($medicoId, $userId, $conn);
+        }
+
+        Pacientes::desvincularUsuario($userId, $conn);
+        $pacienteId = (int) ($links["paciente_id"] ?? 0);
+        if ($pacienteId > 0) {
+            Pacientes::vincularUsuario($pacienteId, $userId, $conn);
+        }
+
+        Enfermeras::desvincularUsuario($userId, $conn);
+        $enfermeraId = (int) ($links["enfermera_id"] ?? 0);
+        if ($enfermeraId > 0) {
+            Enfermeras::vincularUsuario($enfermeraId, $userId, $conn);
         }
     }
 

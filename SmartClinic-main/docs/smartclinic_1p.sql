@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS cita (
     consultorio VARCHAR(30) NULL,
     estado_id INT NOT NULL,
     fecha_hora DATETIME NOT NULL,
+    hora_inicio_atencion DATETIME NULL,
     FOREIGN KEY (paciente_id) REFERENCES paciente (id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (medico_id) REFERENCES medico (id) ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY (estado_id) REFERENCES estado_cita (id) ON DELETE RESTRICT ON UPDATE CASCADE

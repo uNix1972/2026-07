@@ -8,14 +8,12 @@ namespace Dao;
  * Mismo patrón que Dao\Medicos: los datos personales viven en `enfermera`;
  * las ubicaciones se delegan a Dao\EnfermeraCentroSalud. Los métodos
  * coordinadores de creación y edición utilizan una sola transacción para
- * evitar enfermeras sin centros por fallos parciales. usuario_id es un
- * vínculo opcional y único con una cuenta de acceso ya existente.
+ * evitar enfermeras sin centros por fallos parciales.
  */
 class Enfermeras extends Table
 {
     /**
-     * Obtiene el directorio de enfermeras con centros activos y la cuenta
-     * de usuario vinculada (si tiene una).
+     * Obtiene el directorio de enfermeras con centros activos.
      *
      * La subconsulta evita duplicar enfermeras cuando tienen varias
      * ubicaciones. GROUP_CONCAT produce un resumen legible para la tabla
@@ -23,8 +21,7 @@ class Enfermeras extends Table
      */
     public static function getAllEnfermeras(): array
     {
-        $sql = "SELECT en.*, u.username AS usuario_username,
-                       u.useremail AS usuario_useremail,
+        $sql = "SELECT en.*,
                        COALESCE((
                            SELECT GROUP_CONCAT(
                                CONCAT(cs.nombre, ' - Área: ', ecs.area)
@@ -42,7 +39,6 @@ class Enfermeras extends Table
                            WHERE ecs2.enfermera_id = en.id
                        ) AS tiene_asignaciones
                 FROM enfermera en
-                LEFT JOIN usuario u ON u.usercod = en.usuario_id
                 ORDER BY en.id DESC";
 
         return parent::obtenerRegistros($sql, []);
@@ -81,92 +77,29 @@ class Enfermeras extends Table
     }
 
     /**
-     * Lista las cuentas de usuario activas que aún no están vinculadas a
-     * ningún médico, paciente ni otra enfermera, para poblar el selector
-     * de "vincular a un usuario" del formulario.
-     *
-     * $excludeEnfermeraId permite que, al editar, la cuenta ya vinculada a
-     * ESTA MISMA enfermera no se descarte por estar "tomada" por ella.
-     */
-    public static function getUsuariosDisponibles(int $excludeEnfermeraId = 0): array
-    {
-        $sql = "SELECT u.usercod, u.username, u.useremail
-                FROM usuario u
-                WHERE u.userest = 'ACT'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM medico m WHERE m.usuario_id = u.usercod
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1 FROM paciente p WHERE p.usuario_id = u.usercod
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1 FROM enfermera en
-                      WHERE en.usuario_id = u.usercod
-                        AND en.id != :exclude_id
-                  )
-                ORDER BY u.username ASC";
-
-        return parent::obtenerRegistros($sql, ["exclude_id" => $excludeEnfermeraId]);
-    }
-
-    /**
-     * Confirma que una cuenta de usuario esté activa y libre para
-     * vincularse a esta enfermera (validación autoritativa antes de
-     * guardar, independiente de lo que haya mostrado el selector).
-     */
-    public static function usuarioDisponible(int $usuarioId, int $excludeEnfermeraId = 0): bool
-    {
-        $sql = "SELECT 1 AS existe
-                FROM usuario u
-                WHERE u.usercod = :usuario_id
-                  AND u.userest = 'ACT'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM medico m WHERE m.usuario_id = u.usercod
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1 FROM paciente p WHERE p.usuario_id = u.usercod
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1 FROM enfermera en
-                      WHERE en.usuario_id = u.usercod
-                        AND en.id != :exclude_id
-                  )";
-
-        $row = parent::obtenerUnRegistro($sql, [
-            "usuario_id" => $usuarioId,
-            "exclude_id" => $excludeEnfermeraId
-        ]);
-
-        return $row !== false && $row !== null;
-    }
-
-    /**
      * Inserta únicamente la fila principal de la enfermera.
      *
      * La conexión opcional permite que el método participe en una
-     * transacción coordinada por insertEnfermeraConCentros(). usuario_id
-     * nulo significa que no se vinculó ninguna cuenta.
+     * transacción coordinada por insertEnfermeraConCentros().
      */
     public static function insertEnfermera(
         string $nombres,
         string $apellidos,
         string $numColegiatura,
         string $telefono,
-        ?int $usuarioId,
         &$conn = null
     ): int {
         $connection = $conn !== null ? $conn : self::getConn();
         $sql = "INSERT INTO enfermera
-                    (nombres, apellidos, num_colegiatura, telefono, usuario_id)
+                    (nombres, apellidos, num_colegiatura, telefono)
                 VALUES
-                    (:nombres, :apellidos, :num_colegiatura, :telefono, :usuario_id)";
+                    (:nombres, :apellidos, :num_colegiatura, :telefono)";
 
         parent::executeNonQuery($sql, [
             "nombres" => $nombres,
             "apellidos" => $apellidos,
             "num_colegiatura" => $numColegiatura,
-            "telefono" => $telefono,
-            "usuario_id" => $usuarioId
+            "telefono" => $telefono
         ], $connection);
 
         return (int) $connection->lastInsertId();
@@ -184,7 +117,6 @@ class Enfermeras extends Table
         string $apellidos,
         string $numColegiatura,
         string $telefono,
-        ?int $usuarioId,
         array $asignaciones
     ): int {
         $conn = self::getConn();
@@ -200,7 +132,6 @@ class Enfermeras extends Table
                 $apellidos,
                 $numColegiatura,
                 $telefono,
-                $usuarioId,
                 $conn
             );
             EnfermeraCentroSalud::replaceAssignments($enfermeraId, $asignaciones, $conn);
@@ -230,7 +161,6 @@ class Enfermeras extends Table
         string $apellidos,
         string $numColegiatura,
         string $telefono,
-        ?int $usuarioId,
         &$conn = null
     ): bool {
         $connection = $conn !== null ? $conn : self::getConn();
@@ -238,8 +168,7 @@ class Enfermeras extends Table
                     nombres = :nombres,
                     apellidos = :apellidos,
                     num_colegiatura = :num_colegiatura,
-                    telefono = :telefono,
-                    usuario_id = :usuario_id
+                    telefono = :telefono
                 WHERE id = :id";
 
         return parent::executeNonQuery($sql, [
@@ -247,8 +176,7 @@ class Enfermeras extends Table
             "nombres" => $nombres,
             "apellidos" => $apellidos,
             "num_colegiatura" => $numColegiatura,
-            "telefono" => $telefono,
-            "usuario_id" => $usuarioId
+            "telefono" => $telefono
         ], $connection);
     }
 
@@ -262,7 +190,6 @@ class Enfermeras extends Table
         string $apellidos,
         string $numColegiatura,
         string $telefono,
-        ?int $usuarioId,
         array $asignaciones
     ): bool {
         $conn = self::getConn();
@@ -279,7 +206,6 @@ class Enfermeras extends Table
                 $apellidos,
                 $numColegiatura,
                 $telefono,
-                $usuarioId,
                 $conn
             );
             EnfermeraCentroSalud::replaceAssignments($id, $asignaciones, $conn);
@@ -345,6 +271,46 @@ class Enfermeras extends Table
         return parent::executeNonQuery(
             "UPDATE enfermera SET estado = 'ACT' WHERE id = :id",
             ["id" => $id]
+        );
+    }
+
+    /**
+     * Busca la enfermera actualmente vinculada a una cuenta de usuario (si
+     * hay alguna). Se usa desde la pantalla de Usuarios para precargar el
+     * buscador de "Enfermera vinculada" al editar una cuenta existente.
+     */
+    public static function getByUsuarioId(int $usuarioId)
+    {
+        return parent::obtenerUnRegistro(
+            "SELECT * FROM enfermera WHERE usuario_id = :usuario_id",
+            ["usuario_id" => $usuarioId]
+        );
+    }
+
+    /**
+     * Quita el vínculo de cuenta de cualquier enfermera que hoy tenga esta
+     * usuario_id. Se llama SIEMPRE antes de vincularUsuario().
+     */
+    public static function desvincularUsuario(int $usuarioId, &$conn = null): bool
+    {
+        return parent::executeNonQuery(
+            "UPDATE enfermera SET usuario_id = NULL WHERE usuario_id = :usuario_id",
+            ["usuario_id" => $usuarioId],
+            $conn
+        );
+    }
+
+    /**
+     * Vincula una enfermera puntual con una cuenta de usuario. El llamador
+     * (Dao\Security\Users) es responsable de validar antes que esa
+     * enfermera no esté ya vinculada a OTRA cuenta distinta.
+     */
+    public static function vincularUsuario(int $enfermeraId, int $usuarioId, &$conn = null): bool
+    {
+        return parent::executeNonQuery(
+            "UPDATE enfermera SET usuario_id = :usuario_id WHERE id = :id",
+            ["id" => $enfermeraId, "usuario_id" => $usuarioId],
+            $conn
         );
     }
 }
