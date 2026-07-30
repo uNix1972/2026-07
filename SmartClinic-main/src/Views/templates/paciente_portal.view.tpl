@@ -37,6 +37,13 @@
 
     <section class="sc-panel-card">
       <h3>Mis citas</h3>
+      {{if mostrarFiltroCentros}}
+      <div class="agenda-filtros-centro" style="display:flex; gap:8px; margin:0 0 14px; flex-wrap:wrap;">
+        {{foreach centrosFiltro}}
+        <a class="btn {{if activo}}btn--primary{{endif activo}}{{ifnot activo}}btn--outline{{endifnot activo}}" style="padding:6px 12px; font-size:13px;" href="{{url}}">{{nombre}}</a>
+        {{endfor centrosFiltro}}
+      </div>
+      {{endif mostrarFiltroCentros}}
       {{if citas}}
       <div class="table-responsive"><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#F1F5F9;"><th style="padding:12px;">ID</th><th style="padding:12px;">Fecha</th><th style="padding:12px;">Médico</th><th style="padding:12px;">Centro / Consultorio</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Pago</th></tr></thead><tbody>{{foreach citas}}<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:12px;">{{id}}</td><td style="padding:12px;">{{fecha_hora}}</td><td style="padding:12px;">{{medico_nombres}} {{medico_apellidos}}</td><td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td><td style="padding:12px;">{{nombre_estado}}</td><td style="padding:12px;"><form method="POST" action="index.php?page=PacientePortalController&action=pagar"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><input type="hidden" name="total" value="750.00"><button class="btn btn--outline" type="submit">Pagar demo</button></form></td></tr>{{endfor citas}}</tbody></table></div>
       {{endif citas}}

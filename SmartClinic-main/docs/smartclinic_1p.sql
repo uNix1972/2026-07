@@ -538,8 +538,7 @@ INSERT IGNORE INTO roles (rolId, rolNombre, rolDescripcion, rolStatus) VALUES
 
 INSERT IGNORE INTO estado_cita (id, nombre_estado) VALUES
     (6, 'En Espera'),
-    (7, 'En Atención'),
-    (8, 'Confirmada y Pagada');
+    (7, 'En Atención');
 
 INSERT IGNORE INTO usuario
     (usercod, username, useremail, userpswd, userfching, userpswdest, userpswdexp, userest, useractcod, userpswdchg, usertipo)

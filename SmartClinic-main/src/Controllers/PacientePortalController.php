@@ -47,8 +47,37 @@ class PacientePortalController extends PrivateController
     private function index(): void
     {
         Site::addLink('public/css/clinical-record.css');
+        Clinica::autoCancelarPendientesVencidas();
         $paciente = $this->getPaciente();
-        $citas = DaoCitas::getCitasByPaciente(intval($paciente['id']));
+
+        // El paciente puede haberse atendido en más de un centro; se
+        // arma la lista de centros a partir de sus propias citas (no de
+        // todos los centros del sistema) para que el filtro solo muestre
+        // opciones que de verdad le aplican.
+        $citasTodas = DaoCitas::getCitasByPaciente(intval($paciente['id']));
+        $centrosPaciente = $this->extraerCentrosUnicos($citasTodas);
+        $centroFiltro = $this->sanitizeCentroFiltroPaciente(
+            (string)($_GET['centro_filtro'] ?? 'todos'),
+            $centrosPaciente
+        );
+        $citas = $this->filtrarCitasPorCentro($citasTodas, $centroFiltro);
+
+        $centrosFiltro = [[
+            'id' => 'todos',
+            'nombre' => 'Todos los centros',
+            'activo' => $centroFiltro === 'todos',
+            'url' => $this->buildPacienteUrl(['centro_filtro' => 'todos']),
+        ]];
+        foreach ($centrosPaciente as $centro) {
+            $centroId = (string)$centro['centro_salud_id'];
+            $centrosFiltro[] = [
+                'id' => $centroId,
+                'nombre' => $centro['centro_nombre'],
+                'activo' => $centroFiltro === $centroId,
+                'url' => $this->buildPacienteUrl(['centro_filtro' => $centroId]),
+            ];
+        }
+
         $fechaDesde = Validators::sanitizeDate(
             (string)($_GET['fecha_desde'] ?? '')
         );
@@ -66,6 +95,8 @@ class PacientePortalController extends PrivateController
             'paciente_telefono' => $paciente['telefono'] ?? '',
             'paciente_direccion' => $paciente['direccion'] ?? '',
             'citas' => $citas,
+            'centrosFiltro' => $centrosFiltro,
+            'mostrarFiltroCentros' => count($centrosPaciente) > 1,
             'expedientes' => Clinica::getCitasExpedientePaciente(
                 intval($paciente['id']),
                 null,
@@ -82,6 +113,70 @@ class PacientePortalController extends PrivateController
             'maxDate' => (new \DateTime())->add(new \DateInterval('P3M'))->format('Y-m-d'),
             'msg' => $_GET['msg'] ?? '',
         ]);
+    }
+
+    /**
+     * Lista de centros distintos donde el paciente tiene citas, en el
+     * orden en que aparecen (sin repetir), para armar el filtro.
+     */
+    private function extraerCentrosUnicos(array $citas): array
+    {
+        $vistos = [];
+        $centros = [];
+        foreach ($citas as $cita) {
+            $id = intval($cita['centro_salud_id'] ?? 0);
+            if ($id <= 0 || isset($vistos[$id])) {
+                continue;
+            }
+            $vistos[$id] = true;
+            $centros[] = [
+                'centro_salud_id' => $id,
+                'centro_nombre' => (string)($cita['centro_nombre'] ?? 'Centro'),
+            ];
+        }
+        return $centros;
+    }
+
+    /**
+     * "todos" o el id de un centro donde el paciente realmente tiene
+     * citas; cualquier otra cosa cae de vuelta a "todos".
+     */
+    private function sanitizeCentroFiltroPaciente(string $filtro, array $centros): string
+    {
+        if ($filtro === 'todos') {
+            return 'todos';
+        }
+        foreach ($centros as $centro) {
+            if ((string)$centro['centro_salud_id'] === $filtro) {
+                return $filtro;
+            }
+        }
+        return 'todos';
+    }
+
+    private function filtrarCitasPorCentro(array $citas, string $centroFiltro): array
+    {
+        if ($centroFiltro === 'todos') {
+            return $citas;
+        }
+        return array_values(array_filter(
+            $citas,
+            static function (array $item) use ($centroFiltro): bool {
+                return (string)intval($item['centro_salud_id'] ?? 0) === $centroFiltro;
+            }
+        ));
+    }
+
+    /**
+     * Reusa los filtros actuales de la URL y solo pisa los que vengan en
+     * $overrides, para que este filtro y el de fechas de "Mi expediente"
+     * puedan combinarse sin que uno borre al otro.
+     */
+    private function buildPacienteUrl(array $overrides): string
+    {
+        $params = array_merge($_GET, ['page' => 'PacientePortalController'], $overrides);
+        unset($params['msg']);
+        return 'index.php?' . http_build_query($params);
     }
 
     private function agendar(): void
@@ -215,14 +310,18 @@ class PacientePortalController extends PrivateController
             $citaId > 0
             && $cita
             && intval($cita['paciente_id']) === intval($paciente['id'])
+            && intval($cita['estado_id']) === 1
         ) {
             $transaccion = 'SIM-' . date('YmdHis') . '-' . random_int(100, 999);
             Clinica::crearPago($citaId, $total, 'Tarjeta demo', $transaccion);
             Clinica::actualizarEstadoCita($citaId, 2);
             Clinica::crearNotificacion('Pago confirmado', 'Pago simulado aprobado para la cita #' . $citaId . '. Recibo generado.');
             \Utilities\AuditLogger::log('PAGO_SIMULADO', 'Paciente', 'Pago simulado aprobado', ['cita_id' => $citaId, 'total' => $total]);
+            Site::redirectTo('index.php?page=PacientePortalController&msg=' . urlencode('Pago simulado aprobado y recibo generado.'));
+            exit;
         }
-        Site::redirectTo('index.php?page=PacientePortalController&msg=' . urlencode('Pago simulado aprobado y recibo generado.'));
+        Site::redirectTo('index.php?page=PacientePortalController&msg=' . urlencode('Esa cita ya no está pendiente de pago.'));
+        exit;
     }
 
     private function pdf(): void

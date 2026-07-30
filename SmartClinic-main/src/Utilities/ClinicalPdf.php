@@ -12,6 +12,7 @@ class ClinicalPdf
     private const MARGIN = 42;
 
     private array $pages = [];
+    private array $pageBottoms = [];
     private array $commands = [];
     private array $cita = [];
     private float $y = 0;
@@ -39,6 +40,7 @@ class ClinicalPdf
     public function build(array $cita, array $recetas = []): string
     {
         $this->pages = [];
+        $this->pageBottoms = [];
         $this->commands = [];
         $this->cita = $cita;
         $this->newPage($cita);
@@ -90,16 +92,24 @@ class ClinicalPdf
         $this->y = 710;
     }
 
+    /**
+     * Cierra el documento como una sola página que crece hacia abajo
+     * según el contenido real, en vez de partirlo en varias páginas de
+     * tamaño fijo. El pie de página se ancla justo debajo del último
+     * bloque de contenido (no en una coordenada fija), y esa posición
+     * define el límite inferior real del PDF (ver compile()).
+     */
     private function closePage(): void
     {
         if (!$this->commands) {
             return;
         }
-        $number = count($this->pages) + 1;
-        $this->line(42, 35, 553, 35, [0.82, 0.87, 0.93]);
+        $footerLineY = $this->y - 20;
+        $footerTextY = $this->y - 35;
+        $this->line(42, $footerLineY, 553, $footerLineY, [0.82, 0.87, 0.93]);
         $this->text(
             42,
-            20,
+            $footerTextY,
             'Documento clínico generado por SmartClinic',
             7.5,
             false,
@@ -107,23 +117,30 @@ class ClinicalPdf
         );
         $this->text(
             553,
-            20,
-            'Página ' . $number,
+            $footerTextY,
+            'Página 1',
             7.5,
             true,
             [0.38, 0.45, 0.55],
             'right'
         );
+
+        // Alto mínimo de 500pt (bottom <= 342) para que una cita con poco
+        // contenido no se vea como una tira diminuta; si hay más
+        // contenido, el límite baja (se vuelve más negativo) y la página
+        // crece para siempre caber en una sola hoja.
+        $this->pageBottoms[] = min(342, $footerTextY - 15);
         $this->pages[] = implode("\n", $this->commands);
         $this->commands = [];
     }
 
+    /**
+     * El expediente de una cita siempre se genera como una sola página
+     * (ver closePage()/compile()), así que aquí ya no hace falta romper
+     * en una página nueva cuando el contenido es largo.
+     */
     private function ensureSpace(float $height): void
     {
-        if ($this->y - $height >= 55) {
-            return;
-        }
-        $this->newPage($this->cita);
     }
 
     private function patientCard(array $cita): void
@@ -376,12 +393,13 @@ class ClinicalPdf
         ];
         $pageIds = [];
         $nextId = 5;
-        foreach ($this->pages as $stream) {
+        foreach ($this->pages as $index => $stream) {
             $pageId = $nextId++;
             $contentId = $nextId++;
             $pageIds[] = $pageId;
+            $bottom = sprintf('%.2F', $this->pageBottoms[$index] ?? 0);
             $objects[$pageId] =
-                '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 {$bottom} 595 842] "
                 . '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> '
                 . "/Contents {$contentId} 0 R >>";
             $objects[$contentId] =

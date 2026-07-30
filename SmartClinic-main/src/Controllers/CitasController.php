@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use Dao\Citas as DaoCitas;
+use Dao\ClinicaAvanzada as Clinica;
 use Dao\MedicoCentroSalud as DaoMedicoCentroSalud;
 use Dao\Medicos as DaoMedicos;
 use Dao\Pacientes as DaoPacientes;
@@ -119,14 +120,17 @@ class CitasController extends PublicController
         $this->viewData['notificationFailed'] = $notificationStatus === 'failed';
         $this->viewData['notificationUnavailable'] =
             $notificationStatus === 'unavailable';
-        $this->viewData['estadoOptions'] = [
+        $estadoOptions = [
             ['value' => '', 'label' => 'Todos', 'selected' => $estadoFilter === ''],
-            ['value' => 'Pendiente', 'label' => 'Pendiente', 'selected' => strtolower($estadoFilter) === 'pendiente'],
-            ['value' => 'Confirmada', 'label' => 'Confirmada', 'selected' => strtolower($estadoFilter) === 'confirmada'],
-            ['value' => 'Cancelada', 'label' => 'Cancelada', 'selected' => strtolower($estadoFilter) === 'cancelada'],
-            ['value' => 'Completada', 'label' => 'Completada', 'selected' => strtolower($estadoFilter) === 'completada'],
-            ['value' => 'No Asistió', 'label' => 'No Asistió', 'selected' => strtolower($estadoFilter) === 'no asistió' || strtolower($estadoFilter) === 'no asistio'],
         ];
+        foreach (Clinica::ESTADOS as $label) {
+            $estadoOptions[] = [
+                'value' => $label,
+                'label' => $label,
+                'selected' => strtolower($estadoFilter) === strtolower($label),
+            ];
+        }
+        $this->viewData['estadoOptions'] = $estadoOptions;
 
         Renderer::render('citas', $this->viewData);
     }
@@ -286,33 +290,21 @@ class CitasController extends PublicController
         ]));
     }
 
-    private const ALLOWED_TRANSITIONS = [
-        1 => [2, 4],
-        2 => [3, 4, 5],
-    ];
-
+    /**
+     * Auto-cancelar pendientes vencidas ahora vive en ClinicaAvanzada para
+     * que también se pueda invocar desde el portal del doctor y del
+     * paciente, no solo cuando un admin entra a este módulo.
+     */
     private function autoCancelPendingAppointments(): void
     {
-        $citas = DaoCitas::getAllCitas();
-        $now = new \DateTime();
-        $oneHourAgo = (clone $now)->modify('-1 hour');
-
-        foreach ($citas as $cita) {
-            if (!empty($cita['fecha_hora']) && ($cita['estado_id'] ?? 1) == 1) {
-                $citaDateTime = new \DateTime($cita['fecha_hora']);
-                if ($citaDateTime <= $oneHourAgo) {
-                    DaoCitas::updateCita(
-                        intval($cita['id']),
-                        intval($cita['paciente_id']),
-                        intval($cita['medico_id']),
-                        intval($cita['centro_salud_id']),
-                        strval($cita['consultorio'] ?? ''),
-                        4,
-                        $cita['fecha_hora']
-                    );
-                    AuditLogger::log('auto-cancelar', 'Citas', 'Cita vencida cancelada automáticamente', ['cita_id' => $cita['id']]);
-                }
-            }
+        $canceladas = Clinica::autoCancelarPendientesVencidas();
+        foreach ($canceladas as $citaId) {
+            AuditLogger::log(
+                'auto-cancelar',
+                'Citas',
+                'Cita vencida cancelada automáticamente',
+                ['cita_id' => $citaId]
+            );
         }
     }
 
@@ -350,19 +342,13 @@ class CitasController extends PublicController
 
             $errorMessage = null;
             $estadoActual = intval($cita['estado_id'] ?? 1);
-            $nuevoEstadoId = \Utilities\Validators::sanitizeInt($_POST['estado_id'] ?? 1, 1, 5);
+            $nuevoEstadoId = \Utilities\Validators::sanitizeInt($_POST['estado_id'] ?? 1, 1, 7);
 
             if ($nuevoEstadoId !== null && $estadoActual !== $nuevoEstadoId) {
-                $transicionesPermitidas = self::ALLOWED_TRANSITIONS[$estadoActual] ?? [];
-                if (!in_array($nuevoEstadoId, $transicionesPermitidas)) {
-                    $nombresEstados = [
-                        1 => 'Pendiente',
-                        2 => 'Confirmada',
-                        3 => 'Completada',
-                        4 => 'Cancelada',
-                        5 => 'No Asistió'
-                    ];
-                    $errorMessage = "Transición de estado no permitida: de {$nombresEstados[$estadoActual]} a {$nombresEstados[$nuevoEstadoId]}";
+                if (!Clinica::puedeTransicionarAdmin($estadoActual, $nuevoEstadoId)) {
+                    $errorMessage = 'Transición de estado no permitida: de '
+                        . Clinica::nombreEstado($estadoActual) . ' a '
+                        . Clinica::nombreEstado($nuevoEstadoId);
                 }
             }
 
@@ -370,7 +356,7 @@ class CitasController extends PublicController
             $medicoId = \Utilities\Validators::sanitizeId($_POST['medico_id'] ?? 0);
             $centroSaludId =
                 \Utilities\Validators::sanitizeId($_POST['centro_salud_id'] ?? 0);
-            $estadoId = \Utilities\Validators::sanitizeInt($_POST['estado_id'] ?? 1, 1, 5);
+            $estadoId = \Utilities\Validators::sanitizeInt($_POST['estado_id'] ?? 1, 1, 7);
             $fecha = \Utilities\Validators::sanitizeDate($_POST['fecha'] ?? '');
             $hora = \Utilities\Validators::sanitizeTime($_POST['hora'] ?? '');
 
@@ -410,13 +396,7 @@ class CitasController extends PublicController
                     }
                     unset($pacienteItem);
 
-                    $estados = [
-                        ['id' => 1, 'label' => 'Pendiente', 'selected' => $estadoId === 1],
-                        ['id' => 2, 'label' => 'Confirmada', 'selected' => $estadoId === 2],
-                        ['id' => 3, 'label' => 'Completada', 'selected' => $estadoId === 3],
-                        ['id' => 4, 'label' => 'Cancelada', 'selected' => $estadoId === 4],
-                        ['id' => 5, 'label' => 'No Asistió', 'selected' => $estadoId === 5],
-                    ];
+                    $estados = $this->buildEstadosOptions($estadoId);
 
                     Renderer::render('cita_edit', [
                         'cita_id' => $id,
@@ -550,13 +530,7 @@ class CitasController extends PublicController
         }
         unset($pacienteItem);
 
-        $estados = [
-            ['id' => 1, 'label' => 'Pendiente', 'selected' => intval($cita['estado_id']) === 1],
-            ['id' => 2, 'label' => 'Confirmada', 'selected' => intval($cita['estado_id']) === 2],
-            ['id' => 3, 'label' => 'Completada', 'selected' => intval($cita['estado_id']) === 3],
-            ['id' => 4, 'label' => 'Cancelada', 'selected' => intval($cita['estado_id']) === 4],
-            ['id' => 5, 'label' => 'No Asistió', 'selected' => intval($cita['estado_id']) === 5],
-        ];
+        $estados = $this->buildEstadosOptions(intval($cita['estado_id']));
 
         Renderer::render('cita_edit', [
             'cita_id' => intval($cita['id']),
@@ -746,8 +720,24 @@ class CitasController extends PublicController
             if ($cita) {
                 $citaDateTime = new \DateTime($cita['fecha_hora']);
                 $now = new \DateTime();
-                if ($citaDateTime > $now && intval($cita['estado_id']) !== 3) {
-                    DaoCitas::deleteCita($id);
+                $estadoActual = intval($cita['estado_id']);
+                // Antes esto borraba la fila con DELETE: la cita desaparecía
+                // para siempre, sin quedar en el historial del paciente ni
+                // en reportes. Ahora se marca como Cancelada (estado 4) para
+                // conservar el registro, igual que al cancelar desde Editar.
+                if (
+                    $citaDateTime > $now
+                    && Clinica::puedeTransicionarAdmin($estadoActual, 4)
+                ) {
+                    DaoCitas::updateCita(
+                        $id,
+                        intval($cita['paciente_id']),
+                        intval($cita['medico_id']),
+                        intval($cita['centro_salud_id']),
+                        strval($cita['consultorio'] ?? ''),
+                        4,
+                        $cita['fecha_hora']
+                    );
                     AuditLogger::log('cancelar', 'Citas', 'Cita cancelada desde agenda', ['cita_id' => $id]);
                 }
             }
@@ -755,6 +745,15 @@ class CitasController extends PublicController
 
         Site::redirectTo('index.php?page=CitasController&action=index');
         exit;
+    }
+
+    private function buildEstadosOptions(int $estadoActualId): array
+    {
+        $estados = [];
+        foreach (Clinica::ESTADOS as $id => $label) {
+            $estados[] = ['id' => $id, 'label' => $label, 'selected' => $estadoActualId === $id];
+        }
+        return $estados;
     }
 
     private function buildMedicos(int $selectedId = 0): array

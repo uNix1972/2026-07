@@ -1,0 +1,154 @@
+SMARTCLINIC — RESUMEN DE CAMBIOS (para Jeylin)
+================================================
+Commit: "Portal del doctor: flujo clínico completo, filtros, seguridad y PDF de una página"
+Archivos modificados: 11
+
+Este documento explica, en palabras simples, qué se cambió y por qué. La idea
+central de todo este bloque de cambios fue una sola: hacer que el sistema de
+citas se comporte como una clínica real, donde cada paso tiene un orden
+lógico y no se puede saltar ni hacer trampa, y donde cada quien (admin,
+doctor, paciente) solo ve y hace lo que le corresponde.
+
+--------------------------------------------------------------------------
+1. EL "CAMINO" QUE SIGUE UNA CITA (lo más importante de entender)
+--------------------------------------------------------------------------
+Antes, el sistema dejaba que una cita saltara de estado de formas raras
+(por ejemplo, pasar directo a "En Atención" sin que el paciente hubiera
+llegado, o sin que se le hubieran tomado los signos vitales). Ahora el
+camino es fijo y se valida en el servidor, no solo con botones que se
+esconden en la pantalla:
+
+  Pendiente  →  (la confirma un admin/recepción)  →  Confirmada
+  Confirmada →  (el doctor la marca "En espera" cuando el paciente llega)  →  En Espera
+  En Espera  →  (se toma la Preclínica: signos vitales)  →  puede pasar a  →  En Atención
+  En Atención → (el doctor guarda el historial clínico)  →  (Finalizar)  →  Completada
+
+  En cualquier punto entre Confirmada/En Espera, se puede marcar "No Asistió".
+  El estado "Confirmada y Pagada" (que no se usaba y confundía) se eliminó.
+
+Reglas nuevas que el sistema ahora exige de verdad (no se pueden saltar):
+  - No se puede iniciar una atención sin haber tomado los signos vitales
+    en Preclínica primero. Si faltan, el botón "Iniciar atención" ni
+    siquiera aparece; en su lugar sale "Tomar preclínica". Y aunque alguien
+    intente forzar la petición por fuera de la pantalla, el servidor la
+    rechaza igual.
+  - Un doctor no puede tener dos citas "En Atención" al mismo tiempo. Si
+    ya tiene una consulta activa, el sistema le avisa con qué paciente
+    y le pide finalizarla antes de iniciar otra.
+  - No se puede "Finalizar" una consulta si no se guardó antes el
+    historial clínico (motivo y diagnóstico).
+  - Cancelar una cita ya no la borra de la base de datos (antes se
+    perdía el historial); ahora queda marcada como "Cancelada", así se
+    conserva el registro.
+
+--------------------------------------------------------------------------
+2. ARCHIVO POR ARCHIVO
+--------------------------------------------------------------------------
+
+docs/smartclinic_1p.sql
+  - Se quitó el estado muerto "(8, 'Confirmada y Pagada')" que no se
+    usaba en ninguna parte del sistema y solo generaba confusión.
+
+public/css/main.css
+  - Se corrigió un bug visual: el botón "Abrir Preclínica" se veía en
+    blanco (invisible) hasta pasar el mouse encima. Era un choque de
+    estilos (fondo blanco forzado + texto blanco). Ya se ve bien siempre.
+
+public/css/clinical-record.css
+  - Se corrigió que los campos de texto largo (Diagnóstico, Tratamiento,
+    etc.) se vieran "raros" al escribir — era la esquinita de cambiar
+    tamaño del navegador chocando con el borde redondeado del diseño.
+
+src/Controllers/CitasController.php (panel de administración)
+  - Las reglas de qué estado puede pasar a cuál ahora viven en un solo
+    lugar central (Dao/ClinicaAvanzada.php) en vez de estar repetidas.
+  - "Eliminar" una cita ahora la cancela (soft-delete) en lugar de
+    borrarla para siempre.
+  - El auto-cancelado de citas pendientes vencidas (que nadie confirmó a
+    tiempo) se centralizó también.
+  - El filtro de estados en el listado ahora muestra los 7 estados
+    reales (antes solo mostraba 5).
+
+src/Controllers/DoctoresController.php (portal del doctor — el más grande)
+  - Se reordenó la pantalla: "Agenda del doctor" ahora está arriba de
+    todo (antes estaba al final), porque es lo primero que un doctor
+    necesita ver al entrar.
+  - Se agregaron dos filtros combinables arriba de la Agenda:
+      * Día / Semana / Mes / Todos
+      * Centro de salud (solo aparece si el doctor atiende en más de uno)
+  - Se quitó el formulario duplicado "Registrar signos vitales por
+    cita" que estaba suelto en la pantalla principal — ahora los signos
+    vitales se registran en un solo lugar: Preclínica. Antes había dos
+    formularios distintos haciendo lo mismo, lo cual era confuso.
+  - Se agregó el candado de "no iniciar atención sin preclínica" y el
+    candado de "una consulta activa a la vez" (explicados en la sección 1).
+  - El link "Preclínica" en la tabla de Agenda ahora solo aparece en las
+    citas donde realmente se puede usar (de hoy y todavía activas); antes
+    aparecía en todas las filas, incluso en citas ya completadas o de
+    otros días, y llevaba a una pantalla donde no se podía guardar nada.
+  - Se agregó un buscador (por nombre, apellido o identidad) y
+    paginación de 10 en 10 a "Mis pacientes atendidos", para que la
+    lista no se vuelva infinita con el tiempo.
+  - Se corrigió un bug de zona horaria: el reloj de MySQL no coincidía
+    con la hora de Honduras que usa la aplicación, lo que hacía que
+    "Sala de espera de hoy" a veces no mostrara pacientes que sí
+    deberían estar ahí.
+  - "Sala de espera" ahora solo incluye pacientes que ya llegaron
+    físicamente (antes también contaba a los que solo estaban
+    "Confirmados" pero no habían llegado).
+
+src/Dao/ClinicaAvanzada.php (lógica central de citas)
+  - Aquí quedaron centralizadas las reglas de qué transición de estado
+    es válida para un admin y cuáles para un doctor (antes estaban
+    repetidas y un poco distintas en cada controlador).
+  - Se agregó la función que revisa si el doctor ya tiene una consulta
+    "En Atención" (para el candado de una consulta a la vez).
+  - Se corrigió que "Sala de espera" no traía los signos vitales del
+    paciente en su consulta (causaba un error de PHP y hacía que el
+    sistema pensara que nunca se habían tomado los signos, aunque sí
+    estuvieran guardados).
+
+src/Utilities/ClinicalPdf.php (generador del PDF por cita)
+  - El PDF de una cita a veces se generaba en 2 páginas, dejando la
+    segunda casi vacía. Ahora siempre sale en una sola página: el
+    tamaño de la hoja se ajusta al contenido real en vez de usar un
+    tamaño fijo.
+
+src/Controllers/HomeController.php (panel principal / dashboard)
+  - Este fue un hallazgo de seguridad importante: cualquier cuenta de
+    paciente o doctor que entrara a "Volver al panel" veía el dashboard
+    de administración completo — con el nombre, número de identidad y
+    teléfono de TODOS los pacientes del sistema, y el calendario con
+    TODAS las citas de todos los doctores. Ahora, si la cuenta es de un
+    paciente o un doctor, se le redirige automáticamente a su propio
+    portal (que sí filtra los datos a lo que le corresponde ver); el
+    dashboard completo queda solo para personal administrativo.
+
+src/Controllers/PacientePortalController.php (portal del paciente)
+  - Se agregó el mismo filtro de Centro de Salud que en el portal del
+    doctor, pero para la tabla "Mis citas" del paciente.
+  - El auto-cancelado de citas pendientes vencidas también se ejecuta
+    desde aquí.
+  - Se corrigió un caso donde se podía intentar pagar dos veces una
+    misma cita.
+
+src/Views/templates/doctor_portal.view.tpl (pantalla del portal del doctor)
+  - Refleja todos los cambios de DoctoresController.php: el nuevo orden
+    de secciones, los dos filtros (período y centro), la eliminación
+    del formulario duplicado de signos vitales, el buscador y
+    paginación de pacientes, y los tres estados posibles del botón de
+    acción en Sala de Espera (Iniciar atención / Tomar preclínica /
+    Ya en atención).
+
+src/Views/templates/paciente_portal.view.tpl (pantalla del portal del paciente)
+  - Se agregaron los botones de filtro por Centro de Salud arriba de
+    la tabla "Mis citas".
+
+--------------------------------------------------------------------------
+3. EN RESUMEN
+--------------------------------------------------------------------------
+Este bloque de cambios no agrega una funcionalidad nueva vistosa: hace
+que el sistema de citas se comporte de forma correcta y segura de punta
+a punta — el orden clínico se respeta, no se pierden datos al cancelar,
+un doctor no puede atender dos pacientes a la vez, nadie ve información
+que no le corresponde, y el PDF y las pantallas se ven bien organizadas.

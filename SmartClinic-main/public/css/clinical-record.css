@@ -220,6 +220,11 @@
   border-radius: 11px;
   background: #fff;
   transition: border-color .18s ease, box-shadow .18s ease;
+  box-sizing: border-box;
+}
+
+.clinical-page textarea {
+  resize: vertical;
 }
 
 .clinical-page input:focus,

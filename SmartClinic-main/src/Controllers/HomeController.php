@@ -6,15 +6,36 @@ use Dao\Medicos as DaoMedicos;
 use Dao\Pacientes as DaoPacientes;
 use Dao\Citas as DaoCitas;
 use Utilities\Security;
+use Utilities\Site;
 
 // Dashboard principal para usuarios autenticados
 class HomeController extends PrivateController
 {
+    private const ROL_MEDICO = 3;
+    private const ROL_PACIENTE = 4;
+
     // =============================
     // RUN
     // =============================
     public function run(): void
     {
+        // Este dashboard es solo para personal administrativo/recepción:
+        // carga el listado COMPLETO de pacientes (con identidad y
+        // teléfono) y de citas de TODO el sistema. PrivateController deja
+        // pasar a cualquier usuario autenticado a esta página (es la
+        // pantalla de aterrizaje compartida), así que hay que redirigir
+        // aquí mismo a doctores y pacientes a su propio portal, que sí
+        // filtra los datos a lo que a cada quien le corresponde ver.
+        $userId = Security::getUserId();
+        if (Security::isInRol($userId, self::ROL_PACIENTE)) {
+            Site::redirectTo('index.php?page=PacientePortalController');
+            return;
+        }
+        if (Security::isInRol($userId, self::ROL_MEDICO)) {
+            Site::redirectTo('index.php?page=DoctoresController');
+            return;
+        }
+
         if (isset($_GET['action']) && $_GET['action'] === 'calendarPartial') {
             $this->calendarPartial();
             return;

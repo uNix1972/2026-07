@@ -4,6 +4,90 @@ namespace Dao;
 
 class ClinicaAvanzada extends Table
 {
+    /**
+     * Catálogo único de estados de cita. Antes existían dos fuentes de
+     * verdad (CitasController solo conocía 1-5, DoctoresController movía
+     * la cita a 6/7 sin que el módulo admin lo supiera). Todo el sistema
+     * debe usar esta lista.
+     */
+    public const ESTADOS = [
+        1 => 'Pendiente',
+        2 => 'Confirmada',
+        3 => 'Completada',
+        4 => 'Cancelada',
+        5 => 'No Asistió',
+        6 => 'En Espera',
+        7 => 'En Atención',
+    ];
+
+    /**
+     * Transiciones permitidas desde cada estado. El flujo real de una
+     * consulta es: Pendiente -> Confirmada (paga) -> En Espera (llega
+     * físicamente) -> En Atención (el médico la inicia) -> Completada.
+     * Cancelada/No Asistió pueden ocurrir mientras la cita sigue activa.
+     * El módulo admin tiene un poco más de margen (puede saltar pasos para
+     * corregir datos), el portal del doctor exige el orden estricto.
+     */
+    private const TRANSICIONES_ADMIN = [
+        1 => [2, 4],
+        2 => [3, 4, 5, 6],
+        6 => [3, 4, 5, 7],
+        7 => [3, 4],
+    ];
+
+    private const TRANSICIONES_DOCTOR = [
+        2 => [6, 5],
+        6 => [7, 5],
+        7 => [3],
+    ];
+
+    public static function nombreEstado(int $estadoId): string
+    {
+        return self::ESTADOS[$estadoId] ?? 'Desconocido';
+    }
+
+    public static function puedeTransicionarAdmin(int $actual, int $nuevo): bool
+    {
+        return in_array($nuevo, self::TRANSICIONES_ADMIN[$actual] ?? [], true);
+    }
+
+    public static function puedeTransicionarDoctor(int $actual, int $nuevo): bool
+    {
+        return in_array($nuevo, self::TRANSICIONES_DOCTOR[$actual] ?? [], true);
+    }
+
+    /**
+     * Cancela automáticamente citas Pendientes (nunca confirmadas/pagadas)
+     * cuya hora ya pasó hace más de una hora. Devuelve los IDs cancelados
+     * para que quien la invoque pueda auditar el cambio.
+     *
+     * El límite se calcula en PHP (con date(), que respeta la zona horaria
+     * configurada en parameters.env) en vez de usar NOW()/DATE_SUB() de
+     * MySQL. La conexión a la base de datos no fija su propia zona horaria
+     * (ver Dao.php), así que MySQL puede estar corriendo en UTC mientras la
+     * app trabaja en hora de Honduras; comparar contra un valor calculado
+     * en PHP evita ese desfase.
+     */
+    public static function autoCancelarPendientesVencidas(): array
+    {
+        $limite = date('Y-m-d H:i:s', strtotime('-1 hour'));
+        $vencidas = parent::obtenerRegistros(
+            "SELECT id FROM cita
+             WHERE estado_id = 1
+               AND fecha_hora <= :limite",
+            ['limite' => $limite]
+        );
+        if ($vencidas) {
+            parent::executeNonQuery(
+                "UPDATE cita SET estado_id = 4
+                 WHERE estado_id = 1
+                   AND fecha_hora <= :limite",
+                ['limite' => $limite]
+            );
+        }
+        return array_map(static fn (array $r): int => intval($r['id']), $vencidas);
+    }
+
     public static function getMedicoByUsuario(int $usuarioId): ?array
     {
         $sql = "SELECT m.*, e.nombre_especialidad
@@ -48,12 +132,25 @@ class ClinicaAvanzada extends Table
 
     /**
      * Obtiene la sala de espera de hoy con centro y consultorio.
+     *
+     * Solo incluye citas que el paciente ya confirmó que llegó (En Espera)
+     * o que ya están en atención. Una cita solo "Confirmada" significa que
+     * se pagó, no que el paciente esté físicamente en la clínica, así que
+     * no pertenece a esta lista.
+     *
+     * "Hoy" se recibe ya calculado desde PHP (date('Y-m-d')) en vez de usar
+     * CURDATE() de MySQL, porque la conexión no fija su zona horaria (ver
+     * Dao.php) y puede quedar desfasada de la hora de Honduras que usa la
+     * app, haciendo que citas de "hoy" no aparezcan aquí.
      */
-    public static function getSalaEspera(int $medicoId): array
+    public static function getSalaEspera(int $medicoId, string $hoy): array
     {
         $sql = "SELECT c.*, p.nombres AS paciente_nombres, p.apellidos AS paciente_apellidos,
                        p.telefono AS paciente_telefono, ec.nombre_estado,
-                       cs.nombre AS centro_nombre, c.consultorio
+                       cs.nombre AS centro_nombre, c.consultorio,
+                       sv.temperatura, sv.presion_sistolica, sv.presion_diastolica,
+                       sv.frecuencia_cardiaca, sv.frecuencia_respiratoria,
+                       sv.saturacion_oxigeno, sv.peso, sv.talla, sv.notas AS signos_notas
                 FROM cita c
                 INNER JOIN paciente p ON c.paciente_id = p.id
                 INNER JOIN estado_cita ec ON c.estado_id = ec.id
@@ -61,11 +158,34 @@ class ClinicaAvanzada extends Table
                 INNER JOIN medico_centro_salud mcs
                     ON mcs.medico_id = c.medico_id
                    AND mcs.centro_salud_id = c.centro_salud_id
+                LEFT JOIN signos_vitales sv ON sv.cita_id = c.id
                 WHERE c.medico_id = :medico_id
-                  AND c.estado_id IN (2, 6, 7)
-                  AND DATE(c.fecha_hora) = CURDATE()
+                  AND c.estado_id IN (6, 7)
+                  AND DATE(c.fecha_hora) = :hoy
                 ORDER BY c.fecha_hora ASC";
-        return parent::obtenerRegistros($sql, ['medico_id' => $medicoId]);
+        return parent::obtenerRegistros($sql, ['medico_id' => $medicoId, 'hoy' => $hoy]);
+    }
+
+    /**
+     * Un médico solo debe poder tener una cita "En Atención" (7) a la vez;
+     * antes de dejarlo iniciar otra, hay que confirmar que no tenga ya
+     * una consulta activa en curso.
+     */
+    public static function getCitaEnAtencion(int $medicoId, int $excludeCitaId): ?array
+    {
+        $sql = "SELECT c.id, c.fecha_hora, p.nombres AS paciente_nombres,
+                       p.apellidos AS paciente_apellidos
+                FROM cita c
+                INNER JOIN paciente p ON p.id = c.paciente_id
+                WHERE c.medico_id = :medico_id
+                  AND c.estado_id = 7
+                  AND c.id != :exclude_id
+                LIMIT 1";
+        $resultado = parent::obtenerUnRegistro($sql, [
+            'medico_id' => $medicoId,
+            'exclude_id' => $excludeCitaId,
+        ]);
+        return $resultado ?: null;
     }
 
     public static function actualizarEstadoCita(int $citaId, int $estadoId): void
@@ -178,7 +298,7 @@ class ClinicaAvanzada extends Table
         ?string $fechaHasta = null
     ): array {
         $sql = "SELECT c.id, c.fecha_hora, c.medico_id, c.paciente_id,
-                       c.centro_salud_id, ec.nombre_estado,
+                       c.centro_salud_id, c.estado_id, ec.nombre_estado,
                        m.nombres AS medico_nombres,
                        m.apellidos AS medico_apellidos,
                        e.nombre_especialidad, cs.nombre AS centro_nombre,
@@ -217,7 +337,7 @@ class ClinicaAvanzada extends Table
     public static function getCitaExpediente(int $citaId): ?array
     {
         $sql = "SELECT c.id, c.fecha_hora, c.medico_id, c.paciente_id,
-                       c.centro_salud_id, ec.nombre_estado,
+                       c.centro_salud_id, c.estado_id, ec.nombre_estado,
                        p.identidad, p.nombres AS paciente_nombres,
                        p.apellidos AS paciente_apellidos, p.fecha_nacimiento,
                        p.telefono, p.direccion,

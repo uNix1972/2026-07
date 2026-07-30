@@ -25,6 +25,58 @@
     </div>
   </section>
 
+  <section class="sc-panel-card" style="margin-bottom:22px;">
+    <h3>Agenda del doctor</h3>
+    <div class="agenda-filtros" style="display:flex; gap:8px; margin:10px 0 4px; flex-wrap:wrap;">
+      <a class="btn {{if agendaFiltroDia}}btn--primary{{endif agendaFiltroDia}}{{ifnot agendaFiltroDia}}btn--outline{{endifnot agendaFiltroDia}}" style="padding:8px 14px;" href="{{urlFiltroDia}}">Día</a>
+      <a class="btn {{if agendaFiltroSemana}}btn--primary{{endif agendaFiltroSemana}}{{ifnot agendaFiltroSemana}}btn--outline{{endifnot agendaFiltroSemana}}" style="padding:8px 14px;" href="{{urlFiltroSemana}}">Semana</a>
+      <a class="btn {{if agendaFiltroMes}}btn--primary{{endif agendaFiltroMes}}{{ifnot agendaFiltroMes}}btn--outline{{endifnot agendaFiltroMes}}" style="padding:8px 14px;" href="{{urlFiltroMes}}">Mes</a>
+      <a class="btn {{if agendaFiltroTodos}}btn--primary{{endif agendaFiltroTodos}}{{ifnot agendaFiltroTodos}}btn--outline{{endifnot agendaFiltroTodos}}" style="padding:8px 14px;" href="{{urlFiltroTodos}}">Todos</a>
+    </div>
+    {{if mostrarFiltroCentros}}
+    <div class="agenda-filtros-centro" style="display:flex; gap:8px; margin:0 0 16px; flex-wrap:wrap;">
+      {{foreach centrosFiltro}}
+      <a class="btn {{if activo}}btn--primary{{endif activo}}{{ifnot activo}}btn--outline{{endifnot activo}}" style="padding:6px 12px; font-size:13px;" href="{{url}}">{{nombre}}</a>
+      {{endfor centrosFiltro}}
+    </div>
+    {{endif mostrarFiltroCentros}}
+    {{if agenda}}
+    <div class="table-responsive">
+      <table style="width:100%; border-collapse:collapse; text-align:left;">
+        <thead><tr style="background:#033B9F; color:white;"><th style="padding:12px;">ID</th><th style="padding:12px;">Fecha</th><th style="padding:12px;">Paciente</th><th style="padding:12px;">Centro / Consultorio</th><th style="padding:12px;">Signos vitales</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Flujo</th></tr></thead>
+        <tbody>
+        {{foreach agenda}}
+        <tr style="border-bottom:1px solid #E5E7EB;">
+          <td style="padding:12px;">{{id}}</td>
+          <td style="padding:12px;">{{fecha_hora}}</td>
+          <td style="padding:12px;">{{paciente_nombres}} {{paciente_apellidos}}</td>
+          <td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td>
+          <td style="padding:12px;">Temp. {{temperatura}} °C<br>PA {{presion_sistolica}}/{{presion_diastolica}}<br>FC {{frecuencia_cardiaca}} · FR {{frecuencia_respiratoria}}<br>SpO₂ {{saturacion_oxigeno}}%</td>
+          <td style="padding:12px;">{{nombre_estado}}</td>
+          <td style="padding:12px; display:flex; gap:8px; flex-wrap:wrap;">
+            {{if puedeAbrirPreclinica}}
+            <a class="btn btn--outline" href="index.php?page=DoctoresController&action=preclinica&cita_id={{id}}">Preclínica</a>
+            {{endif puedeAbrirPreclinica}}
+            {{if puedeConfirmarLlegada}}
+            <form method="POST" action="index.php?page=DoctoresController&action=confirmarLlegada"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--outline" type="submit">En espera</button></form>
+            {{endif puedeConfirmarLlegada}}
+            {{if puedeNoAsistio}}
+            <form method="POST" action="index.php?page=DoctoresController&action=noAsistio" data-confirm="¿Confirma que el paciente no asistió a esta cita?"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--outline" type="submit">No asistió</button></form>
+            {{endif puedeNoAsistio}}
+            {{if puedeFinalizar}}
+            <form method="POST" action="index.php?page=DoctoresController&action=finalizar"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--primary" type="submit">Finalizar</button></form>
+            {{endif puedeFinalizar}}
+            <a class="btn btn--outline" href="index.php?page=DoctoresController&action=pdf&cita_id={{id}}">PDF</a>
+          </td>
+        </tr>
+        {{endfor agenda}}
+        </tbody>
+      </table>
+    </div>
+    {{endif agenda}}
+    {{ifnot agenda}}<p style="color:#64748b;">No hay citas en este período.</p>{{endifnot agenda}}
+  </section>
+
   <div class="sc-two-columns">
     <section class="sc-panel-card">
       <h3>Sala de espera de hoy</h3>
@@ -40,11 +92,15 @@
             <td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td>
             <td style="padding:12px;">{{nombre_estado}}</td>
             <td style="padding:12px;">
+              {{if puedeIniciarAtencion}}
               <form method="POST" action="index.php?page=DoctoresController&action=iniciarAtencion" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
                 <input type="hidden" name="cita_id" value="{{id}}">
                 <button type="submit" class="btn btn--primary" style="padding:8px 12px;">Iniciar atención</button>
               </form>
+              {{endif puedeIniciarAtencion}}
+              {{if faltaPreclinica}}<a class="btn btn--outline" style="padding:8px 12px;" href="index.php?page=DoctoresController&action=preclinica&cita_id={{id}}">Tomar preclínica</a>{{endif faltaPreclinica}}
+              {{if yaEnAtencion}}<span style="color:#64748b;">Ya en atención</span>{{endif yaEnAtencion}}
             </td>
           </tr>
           {{endfor sala}}
@@ -62,10 +118,13 @@
         <div class="toolbar-field">
           <label for="cita_id">Cita del paciente</label>
           <select id="cita_id" name="cita_id" required>
-            {{foreach agenda}}
+            {{foreach agendaTodas}}
+            {{if puedeFinalizar}}
             <option value="{{id}}" data-temperatura="{{temperatura}}" data-sistolica="{{presion_sistolica}}" data-diastolica="{{presion_diastolica}}" data-cardiaca="{{frecuencia_cardiaca}}" data-respiratoria="{{frecuencia_respiratoria}}" data-saturacion="{{saturacion_oxigeno}}" data-peso="{{peso}}" data-talla="{{talla}}">#{{id}} · {{fecha_hora}} · {{paciente_nombres}} {{paciente_apellidos}}</option>
-            {{endfor agenda}}
+            {{endif puedeFinalizar}}
+            {{endfor agendaTodas}}
           </select>
+          <small style="color:#64748b;">Solo se listan citas "En Atención". Use "Iniciar atención" en la agenda primero.</small>
         </div>
         <div id="consulta_signos_resumen" class="clinical-vitals-summary" style="border-radius:14px; padding:14px;">
           <strong>Signos vitales de la cita seleccionada</strong>
@@ -92,6 +151,17 @@
   <section class="sc-panel-card" style="margin-top:22px;">
     <h3>Mis pacientes atendidos</h3>
     <p class="clinical-section-intro">Pacientes con al menos una consulta documentada o finalizada por usted.</p>
+    <form method="GET" action="index.php" class="toolbar-form" style="margin-bottom:16px;">
+      <input type="hidden" name="page" value="DoctoresController">
+      <div class="toolbar-row" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+        <div class="toolbar-field" style="flex:1; min-width:220px;">
+          <label for="pacientes_q">Buscar paciente</label>
+          <input type="search" id="pacientes_q" name="pacientes_q" value="{{pacientesQuery}}" placeholder="Nombre, apellido o identidad">
+        </div>
+        <button type="submit" class="btn btn--primary" style="padding:10px 16px;">Buscar</button>
+        {{if pacientesTieneQuery}}<a class="btn btn--outline" style="padding:10px 16px;" href="index.php?page=DoctoresController">Limpiar</a>{{endif pacientesTieneQuery}}
+      </div>
+    </form>
     {{if pacientes}}
     <div class="table-responsive">
       <table style="width:100%; border-collapse:collapse;">
@@ -109,69 +179,28 @@
         </tbody>
       </table>
     </div>
-    {{endif pacientes}}
-    {{ifnot pacientes}}<p style="color:#64748b;">Aún no ha atendido pacientes.</p>{{endifnot pacientes}}
-  </section>
-
-  <section class="sc-panel-card" style="margin-top:22px;">
-    <h3>Registrar signos vitales por cita</h3>
-    <p class="clinical-section-intro">Puede registrar o actualizar los signos. Se mostrarán al completar la consulta y en el PDF.</p>
-    {{if agenda}}
-    <form method="POST" action="index.php?page=DoctoresController&action=guardarSignos" class="toolbar-form">
-      <input type="hidden" name="csrf_token" value="{{csrf_token}}">
-      <div class="toolbar-field">
-        <label for="signos_cita_id">Cita</label>
-        <select id="signos_cita_id" name="cita_id" required>
-          {{foreach agenda}}
-          <option value="{{id}}">#{{id}} · {{fecha_hora}} · {{paciente_nombres}} {{paciente_apellidos}} · {{centro_nombre}}</option>
-          {{endfor agenda}}
-        </select>
+    <div class="sc-noprint" style="display:flex; justify-content:space-between; align-items:center; padding:16px 0 0; flex-wrap:wrap; gap:12px;">
+      <span style="color:#64748b;">Página {{paginaPacientes}} de {{totalPaginasPacientes}}</span>
+      <div style="display:flex; gap:10px;">
+        {{if urlPaginaAnteriorPacientes}}
+        <a class="btn btn--outline" href="{{urlPaginaAnteriorPacientes}}">&larr; Anterior</a>
+        {{endif urlPaginaAnteriorPacientes}}
+        {{ifnot urlPaginaAnteriorPacientes}}
+        <span class="btn btn--outline" style="opacity:.5; pointer-events:none;">&larr; Anterior</span>
+        {{endifnot urlPaginaAnteriorPacientes}}
+        {{if urlPaginaSiguientePacientes}}
+        <a class="btn btn--outline" href="{{urlPaginaSiguientePacientes}}">Siguiente &rarr;</a>
+        {{endif urlPaginaSiguientePacientes}}
+        {{ifnot urlPaginaSiguientePacientes}}
+        <span class="btn btn--outline" style="opacity:.5; pointer-events:none;">Siguiente &rarr;</span>
+        {{endifnot urlPaginaSiguientePacientes}}
       </div>
-      <div class="clinical-fields-grid">
-        <div class="toolbar-field"><label for="temperatura">Temperatura °C</label><input id="temperatura" type="number" step="0.1" min="30" max="45" name="temperatura"></div>
-        <div class="toolbar-field"><label for="presion_sistolica">Presión sistólica</label><input id="presion_sistolica" type="number" min="50" max="260" name="presion_sistolica"></div>
-        <div class="toolbar-field"><label for="presion_diastolica">Presión diastólica</label><input id="presion_diastolica" type="number" min="30" max="180" name="presion_diastolica"></div>
-        <div class="toolbar-field"><label for="frecuencia_cardiaca">Frecuencia cardiaca</label><input id="frecuencia_cardiaca" type="number" min="20" max="250" name="frecuencia_cardiaca"></div>
-        <div class="toolbar-field"><label for="frecuencia_respiratoria">Frecuencia respiratoria</label><input id="frecuencia_respiratoria" type="number" min="5" max="80" name="frecuencia_respiratoria"></div>
-        <div class="toolbar-field"><label for="saturacion_oxigeno">SpO₂ %</label><input id="saturacion_oxigeno" type="number" step="0.1" min="50" max="100" name="saturacion_oxigeno"></div>
-        <div class="toolbar-field"><label for="peso">Peso kg</label><input id="peso" type="number" step="0.01" min="1" max="500" name="peso"></div>
-        <div class="toolbar-field"><label for="talla">Talla cm</label><input id="talla" type="number" step="0.1" min="30" max="250" name="talla"></div>
-      </div>
-      <div class="toolbar-field"><label for="signos_notas">Notas</label><textarea id="signos_notas" name="notas" maxlength="500" rows="2"></textarea></div>
-      <button class="btn btn--primary" type="submit">Guardar signos vitales</button>
-    </form>
-    {{endif agenda}}
-    {{ifnot agenda}}<p style="color:#64748b;">No hay citas disponibles para registrar signos vitales.</p>{{endifnot agenda}}
-  </section>
-
-  <section class="sc-panel-card" style="margin-top:22px;">
-    <h3>Agenda del doctor</h3>
-    {{if agenda}}
-    <div class="table-responsive">
-      <table style="width:100%; border-collapse:collapse; text-align:left;">
-        <thead><tr style="background:#033B9F; color:white;"><th style="padding:12px;">ID</th><th style="padding:12px;">Fecha</th><th style="padding:12px;">Paciente</th><th style="padding:12px;">Centro / Consultorio</th><th style="padding:12px;">Signos vitales</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Flujo</th></tr></thead>
-        <tbody>
-        {{foreach agenda}}
-        <tr style="border-bottom:1px solid #E5E7EB;">
-          <td style="padding:12px;">{{id}}</td>
-          <td style="padding:12px;">{{fecha_hora}}</td>
-          <td style="padding:12px;">{{paciente_nombres}} {{paciente_apellidos}}</td>
-          <td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td>
-          <td style="padding:12px;">Temp. {{temperatura}} °C<br>PA {{presion_sistolica}}/{{presion_diastolica}}<br>FC {{frecuencia_cardiaca}} · FR {{frecuencia_respiratoria}}<br>SpO₂ {{saturacion_oxigeno}}%</td>
-          <td style="padding:12px;">{{nombre_estado}}</td>
-          <td style="padding:12px; display:flex; gap:8px; flex-wrap:wrap;">
-            <a class="btn btn--outline" href="index.php?page=DoctoresController&action=preclinica&cita_id={{id}}">Preclínica</a>
-            <form method="POST" action="index.php?page=DoctoresController&action=confirmarLlegada"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--outline" type="submit">En espera</button></form>
-            <form method="POST" action="index.php?page=DoctoresController&action=finalizar"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><button class="btn btn--primary" type="submit">Finalizar</button></form>
-            <a class="btn btn--outline" href="index.php?page=DoctoresController&action=pdf&cita_id={{id}}">PDF</a>
-          </td>
-        </tr>
-        {{endfor agenda}}
-        </tbody>
-      </table>
     </div>
-    {{endif agenda}}
-    {{ifnot agenda}}<p style="color:#64748b;">No hay citas asignadas.</p>{{endifnot agenda}}
+    {{endif pacientes}}
+    {{ifnot pacientes}}
+    {{if pacientesTieneQuery}}<p style="color:#64748b;">No se encontraron pacientes que coincidan con "{{pacientesQuery}}".</p>{{endif pacientesTieneQuery}}
+    {{ifnot pacientesTieneQuery}}<p style="color:#64748b;">Aún no ha atendido pacientes.</p>{{endifnot pacientesTieneQuery}}
+    {{endifnot pacientes}}
   </section>
 </div>
 <script>
