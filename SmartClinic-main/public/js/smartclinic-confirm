@@ -1,0 +1,28 @@
+document.addEventListener("DOMContentLoaded", () => {
+    const formularios = document.querySelectorAll("form");
+
+    formularios.forEach(formulario => {
+        formulario.addEventListener("submit", (evento) => {
+            const botonActivo = document.activeElement; 
+            const textoBoton = botonActivo ? botonActivo.innerText.toLowerCase() : "";
+
+            const palabrasInsert = ["guardar", "registrar", "crear", "insertar", "añadir", "agregar"];
+            const palabrasUpdate = ["actualizar", "modificar", "editar", "cambiar"];
+
+            let mensaje = "";
+
+            if (palabrasInsert.some(palabra => textoBoton.includes(palabra))) {
+                mensaje = "¿Está seguro de que desea guardar este nuevo registro?";
+            } else if (palabrasUpdate.some(palabra => textoBoton.includes(palabra))) {
+                mensaje = "¿Está seguro de que desea aplicar los cambios y actualizar el registro?";
+            }
+
+            if (mensaje !== "") {
+                const usuarioConfirma = confirm(mensaje);
+                if (!usuarioConfirma) {
+                    evento.preventDefault();
+                }
+            }
+        });
+    });
+});
