@@ -1,109 +1,124 @@
 <?php
+
 namespace Controllers\Security;
+
 use Controllers\PrivateController;
-use Views\Renderer;
 use Dao\Security\Users as DaoUsers;
 use Utilities\Context;
 use Utilities\Paging;
 use Utilities\Security;
+use Views\Renderer;
 
-// Listado y filtros de usuarios para administraciaIn
+/**
+ * Lists users once per account and filters by active role membership.
+ */
 class Users extends PrivateController
 {
-    private $viewData = [];
-    private $partialName = "";
-    private $status = "";
-    private $usertipo = "";
-    private $orderBy = "";
-    private $orderDescending = false;
-    private $pageNumber = 1;
-    private $itemsPerPage = 10;
-    private $users = [];
-    private $usersCount = 0;
-    private $pages = 0;
+    private array $viewData = [];
+    private string $partialName = "";
+    private string $status = "";
+    private int $roleId = 0;
+    private int $pageNumber = 1;
+    private int $itemsPerPage = 10;
+    private array $users = [];
+    private int $usersCount = 0;
+    private int $pages = 1;
 
-    // =============================
-    // RUN
-    // =============================
     public function run(): void
     {
-        // Lista usuarios y aplica filtros guardados en contexto
         $this->getParamsFromContext();
         $this->getParams();
-        $tmpUsers = DaoUsers::searchUsers($this->partialName, $this->status, $this->usertipo);
-        $this->usersCount = count($tmpUsers);
-        $this->pages = $this->usersCount > 0 ? ceil($this->usersCount / $this->itemsPerPage) : 1;
+
+        $matchingUsers = DaoUsers::searchUsers(
+            $this->partialName,
+            $this->status,
+            $this->roleId
+        );
+        $this->usersCount = count($matchingUsers);
+        $this->pages = $this->usersCount > 0
+            ? (int) ceil($this->usersCount / $this->itemsPerPage)
+            : 1;
+        $this->pageNumber = min($this->pageNumber, $this->pages);
+
         $start = ($this->pageNumber - 1) * $this->itemsPerPage;
-        $this->users = array_slice($tmpUsers, $start, $this->itemsPerPage);
+        $this->users = array_slice($matchingUsers, $start, $this->itemsPerPage);
 
         $loggedUserId = Security::getUserId();
         foreach ($this->users as &$user) {
-            $user["is_self"] = $user["usercod"] == $loggedUserId;
+            $user["is_self"] = (int) $user["usercod"] === (int) $loggedUserId;
+            $roleNames = trim((string) ($user["role_names"] ?? ""));
+            $user["roles"] = $roleNames === ""
+                ? [["rolNombre" => "Sin rol activo"]]
+                : array_map(
+                    static fn(string $name): array => ["rolNombre" => $name],
+                    explode("||", $roleNames)
+                );
         }
+        unset($user);
 
         $this->setParamsToContext();
         $this->setParamsToDataView();
         Renderer::render("security/users", $this->viewData);
     }
 
-    // =============================
-    // GETPARAMS
-    // =============================
+    /**
+     * Reads and sanitizes filters submitted in the query string.
+     */
     private function getParams(): void
     {
-        // Lee filtros y paginacion enviados por querystring
-        $this->partialName = \Utilities\Validators::sanitizeString($_GET["partialName"] ?? $this->partialName);
-        $this->status = \Utilities\Validators::sanitizeAlphaNum($_GET["status"] ?? $this->status);
-        $this->usertipo = \Utilities\Validators::sanitizeAlphaNum($_GET["usertipo"] ?? $this->usertipo);
-        $this->orderBy = \Utilities\Validators::sanitizeAlphaNum($_GET["orderBy"] ?? $this->orderBy);
-        $this->orderDescending = isset($_GET["orderDescending"]) ? boolval($_GET["orderDescending"]) : $this->orderDescending;
-        $this->pageNumber = \Utilities\Validators::sanitizeInt($_GET["pageNum"] ?? $this->pageNumber, 1) ?? $this->pageNumber;
-        $this->itemsPerPage = \Utilities\Validators::sanitizeInt($_GET["itemsPerPage"] ?? $this->itemsPerPage, 1, 100) ?? $this->itemsPerPage;
+        $this->partialName = \Utilities\Validators::sanitizeString(
+            $_GET["partialName"] ?? $this->partialName
+        );
+        $this->status = \Utilities\Validators::sanitizeAlphaNum(
+            $_GET["status"] ?? $this->status
+        );
+        $this->roleId = \Utilities\Validators::sanitizeInt(
+            $_GET["role_id"] ?? $this->roleId,
+            0
+        ) ?? 0;
+        $this->pageNumber = \Utilities\Validators::sanitizeInt(
+            $_GET["pageNum"] ?? $this->pageNumber,
+            1
+        ) ?? $this->pageNumber;
+        $this->itemsPerPage = \Utilities\Validators::sanitizeInt(
+            $_GET["itemsPerPage"] ?? $this->itemsPerPage,
+            1,
+            100
+        ) ?? $this->itemsPerPage;
     }
 
-    // =============================
-    // GETPARAMSFROMCONTEXT
-    // =============================
+    /**
+     * Restores the last filters used in this browser session.
+     */
     private function getParamsFromContext(): void
     {
-        // Recupera filtros de la sesion de navegaciaIn
-        $this->partialName = Context::getContextByKey("users_partialName");
-        $this->status = Context::getContextByKey("users_status");
-        $this->usertipo = Context::getContextByKey("users_usertipo");
-        $this->orderBy = Context::getContextByKey("users_orderBy");
-        $this->orderDescending = boolval(Context::getContextByKey("users_orderDescending"));
-        $this->pageNumber = intval(Context::getContextByKey("users_page"));
-        $this->itemsPerPage = intval(Context::getContextByKey("users_itemsPerPage"));
-        if ($this->pageNumber < 1) $this->pageNumber = 1;
-        if ($this->itemsPerPage < 1) $this->itemsPerPage = 10;
+        $this->partialName = (string) Context::getContextByKey("users_partialName");
+        $this->status = (string) Context::getContextByKey("users_status");
+        $this->roleId = (int) Context::getContextByKey("users_role_id");
+        $storedPage = (int) Context::getContextByKey("users_page");
+        $storedItemsPerPage = (int) Context::getContextByKey("users_itemsPerPage");
+        $this->pageNumber = $storedPage > 0 ? $storedPage : 1;
+        $this->itemsPerPage = $storedItemsPerPage > 0 ? $storedItemsPerPage : 10;
     }
 
-    // =============================
-    // SETPARAMSTOCONTEXT
-    // =============================
+    /**
+     * Persists filters so list/detail navigation does not lose context.
+     */
     private function setParamsToContext(): void
     {
-        // Persiste estado actual de filtros
         Context::setContext("users_partialName", $this->partialName, true);
         Context::setContext("users_status", $this->status, true);
-        Context::setContext("users_usertipo", $this->usertipo, true);
-        Context::setContext("users_orderBy", $this->orderBy, true);
-        Context::setContext("users_orderDescending", $this->orderDescending, true);
+        Context::setContext("users_role_id", $this->roleId, true);
         Context::setContext("users_page", $this->pageNumber, true);
         Context::setContext("users_itemsPerPage", $this->itemsPerPage, true);
     }
 
-    // =============================
-    // SETPARAMSTODATAVIEW
-    // =============================
+    /**
+     * Builds filter options, pagination, and user rows for the template.
+     */
     private function setParamsToDataView(): void
     {
-        // Prepara datos de lista y paginacion para la vista
         $this->viewData["partialName"] = $this->partialName;
-        $this->viewData["status"] = $this->status;
-        $this->viewData["usertipo"] = $this->usertipo;
-        $this->viewData["orderBy"] = $this->orderBy;
-        $this->viewData["orderDescending"] = $this->orderDescending;
         $this->viewData["pageNum"] = $this->pageNumber;
         $this->viewData["itemsPerPage"] = $this->itemsPerPage;
         $this->viewData["usersCount"] = $this->usersCount;
@@ -114,8 +129,15 @@ class Users extends PrivateController
         $statusKey = "status_" . ($this->status === "" ? "EMP" : $this->status);
         $this->viewData[$statusKey] = "selected";
 
-        $tipoKey = "tipo_" . ($this->usertipo === "" ? "EMP" : $this->usertipo);
-        $this->viewData[$tipoKey] = "selected";
+        $this->viewData["role_all_selected"] = $this->roleId === 0;
+        $this->viewData["roleOptions"] = array_map(
+            fn(array $role): array => [
+                "rolId" => (int) $role["rolId"],
+                "rolNombre" => $role["rolNombre"],
+                "selected" => (int) $role["rolId"] === $this->roleId,
+            ],
+            DaoUsers::getActiveRoles()
+        );
 
         $this->viewData["pagination"] = Paging::getPagination(
             $this->usersCount,

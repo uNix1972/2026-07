@@ -48,6 +48,21 @@
     color: var(--cedro);
     font-size: 0.98rem;
   }
+  .profile-roles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .profile-role {
+    display: inline-flex;
+    padding: 0.25rem 0.65rem;
+    border: 1px solid #c9dcfa;
+    border-radius: 999px;
+    background: #eaf2ff;
+    color: #084aa4;
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
   .name-form {
     display: grid;
     gap: 0.55rem;
@@ -116,8 +131,12 @@
       <strong>{{userStatus}}</strong>
     </div>
     <div class="dato">
-      <span>Tipo</span>
-      <strong>{{userTipo}}</strong>
+      <span>Roles</span>
+      <div class="profile-roles">
+        {{foreach userRoles}}
+        <span class="profile-role">{{rolNombre}}</span>
+        {{endfor userRoles}}
+      </div>
     </div>
   </div>
 </section>

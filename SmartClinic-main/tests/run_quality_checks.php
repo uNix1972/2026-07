@@ -608,6 +608,64 @@ check(strpos($kardexView, '{{centro_nombre}}') !== false, 'kárdex muestra centr
 check(strpos($purchaseCreateView, 'name="centro_salud_id"') !== false, 'alta de compra exige centro de destino');
 check(strpos($purchaseEditView, 'name="centro_salud_id"') !== false, 'edición de compra exige centro de destino');
 
+$usersDao = file_get_contents(__DIR__ . '/../src/Dao/Security/Users.php');
+$userController = file_get_contents(__DIR__ . '/../src/Controllers/Security/User.php');
+$usersController = file_get_contents(__DIR__ . '/../src/Controllers/Security/Users.php');
+$userView = file_get_contents(__DIR__ . '/../src/Views/templates/security/user.view.tpl');
+$usersView = file_get_contents(__DIR__ . '/../src/Views/templates/security/users.view.tpl');
+$profileView = file_get_contents(__DIR__ . '/../src/Views/templates/security/perfil.view.tpl');
+$homeController = file_get_contents(__DIR__ . '/../src/Controllers/HomeController.php');
+check(
+    strpos($usersDao, 'createUserWithRoles') !== false
+        && strpos($usersDao, 'updateUserWithRoles') !== false
+        && strpos($usersDao, 'beginTransaction') !== false
+        && strpos($usersDao, 'rollBack') !== false,
+    'usuarios y roles se guardan en una sola transacción'
+);
+check(
+    strpos($usersDao, 'replaceRoles') !== false
+        && strpos($usersDao, 'ruStatus = \'INA\'') !== false
+        && strpos($usersDao, '2099-12-31 23:59:59') !== false,
+    'DAO comentado reemplaza varios roles conservando historial'
+);
+check(
+    strpos($usersDao, 'GROUP_CONCAT(DISTINCT r.rolId') !== false
+        && strpos($usersDao, 'GROUP_CONCAT(DISTINCT r.rolNombre') !== false,
+    'listado devuelve cada usuario con todos sus roles activos'
+);
+check(
+    strpos($usersDao, 'AND EXISTS') !== false
+        && strpos($usersDao, 'filter_ru.rolId = :roleId') !== false,
+    'filtro por rol conserva la lista completa de roles del usuario'
+);
+check(
+    strpos($userController, 'DaoUsers::createUserWithRoles') !== false
+        && strpos($userController, 'DaoUsers::updateUserWithRoles') !== false
+        && strpos($userController, 'assignRole') === false,
+    'controlador de usuarios ya no reduce el acceso a un solo rol'
+);
+check(
+    strpos($userView, 'name="role_ids[]"') !== false
+        && strpos($userView, 'name="usertipo"') === false,
+    'formulario permite seleccionar varios roles reales'
+);
+check(
+    strpos($usersController, 'users_role_id') !== false
+        && strpos($usersView, 'name="role_id"') !== false
+        && strpos($usersView, '{{foreach roles}}') !== false,
+    'lista filtra y muestra varios roles por usuario'
+);
+check(
+    strpos($profileView, '{{foreach userRoles}}') !== false,
+    'perfil muestra todos los roles activos'
+);
+check(
+    strpos($homeController, 'ROL_ADMINISTRADOR') !== false
+        && strpos($homeController, 'ROL_RECEPCION') !== false
+        && strpos($homeController, '$hasAdministrativeRole') !== false,
+    'roles administrativos tienen precedencia en la página inicial'
+);
+
 $navConfig = file_get_contents(__DIR__ . '/../nav.config.json');
 check(
     strpos($navConfig, 'ReportesController') === false

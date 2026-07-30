@@ -3,29 +3,28 @@
 namespace Controllers\Security;
 
 use Controllers\PrivateController;
-use Views\Renderer;
 use Dao\Security\Users as DaoUsers;
-use Dao\Security\Security as DaoSecurity;
 use Utilities\Site;
-use Utilities\Validators;
+use Views\Renderer;
 
-// CRUD de usuario del sistema
+/**
+ * Creates, displays, updates, and deletes users with one or more roles.
+ */
 class User extends PrivateController
 {
-    private $viewData = [];
-    private $mode = "DSP";
+    private array $viewData = [];
+    private string $mode = "DSP";
+    private array $availableRoles = [];
+    private array $selectedRoleIds = [];
 
-    private $modeDescriptions = [
+    private array $modeDescriptions = [
         "DSP" => "Detalle del Usuario %s",
         "INS" => "Nuevo Usuario",
         "UPD" => "Editar Usuario %s",
-        "DEL" => "Eliminar Usuario %s"
+        "DEL" => "Eliminar Usuario %s",
     ];
 
-    private $readonly = "";
-    private $showCommitBtn = true;
-
-    private $user = [
+    private array $user = [
         "usercod" => 0,
         "username" => "",
         "useremail" => "",
@@ -36,15 +35,11 @@ class User extends PrivateController
         "userest" => "ACT",
         "useractcod" => "",
         "userpswdchg" => "",
-        "usertipo" => "NOR"
+        "usertipo" => "NOR",
     ];
 
-    // =============================
-    // RUN
-    // =============================
     public function run(): void
     {
-        // Orquesta carga, validaciaIn y guardado del formulario de usuario
         try {
             $this->getData();
             if ($this->isPostBack() && $this->validateData()) {
@@ -60,70 +55,59 @@ class User extends PrivateController
         }
     }
 
-    // =============================
-    // GETDATA
-    // =============================
-    private function getData()
+    /**
+     * Loads the role catalog and the target user for the requested form mode.
+     */
+    private function getData(): void
     {
-        // Carga datos iniciales segaUn modo y usuario objetivo
         $this->mode = \Utilities\Validators::sanitizeAlphaNum($_GET["mode"] ?? "NOF");
-
         if (!isset($this->modeDescriptions[$this->mode])) {
-            throw new \Exception("Modo inválido");
+            throw new \Exception("Modo invalido");
         }
 
-        $this->readonly = ($this->mode === "DEL" || $this->mode === "DSP") ? "readonly" : "";
-        $this->showCommitBtn = $this->mode !== "DSP";
+        $this->availableRoles = DaoUsers::getActiveRoles();
 
         if ($this->mode === "INS") {
-            $this->user = [
-                "usercod" => 0,
-                "username" => "",
-                "useremail" => "",
-                "userpswd" => "",
-                "userfching" => "",
-                "userpswdest" => "ACT",
-                "userpswdexp" => "",
-                "userest" => "ACT",
-                "useractcod" => "",
-                "userpswdchg" => "",
-                "usertipo" => "NOR"
-            ];
-        } else {
-            $id = \Utilities\Validators::sanitizeId($_GET["id"] ?? 0);
-            if ($id === null) {
-                throw new \Exception("ID de usuario inválido");
-            }
-            $userData = DaoUsers::getUserById($id);
-            if (!$userData) {
-                throw new \Exception("Usuario no encontrado");
-            }
-            $this->user = array_merge($this->user, $userData);
+            // Reception is the least privileged operational role and is the
+            // safest initial suggestion; the administrator can change it.
+            $activeRoleIds = array_map("intval", array_column($this->availableRoles, "rolId"));
+            $this->selectedRoleIds = in_array(2, $activeRoleIds, true) ? [2] : [];
+            return;
         }
+
+        $id = \Utilities\Validators::sanitizeId($_GET["id"] ?? 0);
+        if ($id === null) {
+            throw new \Exception("ID de usuario invalido");
+        }
+
+        $userData = DaoUsers::getUserById($id);
+        if (!$userData) {
+            throw new \Exception("Usuario no encontrado");
+        }
+
+        $this->user = array_merge($this->user, $userData);
+        $this->selectedRoleIds = $this->parseRoleIds($userData["role_ids"] ?? "");
     }
 
     /**
-     * Devuelve true si el usuario logueado esta editando su propio perfil
-     * Usa $_SESSION["login"]["userId"] guardado por Utilities\Security::login()
+     * Checks whether the authenticated user is editing their own account.
      */
-    // =============================
-    // ISEDITINGSELF
-    // =============================
     private function isEditingSelf(): bool
     {
-        $loggedUserId = \Utilities\Security::getUserId();
-        return intval($this->user["usercod"]) === intval($loggedUserId);
+        return (int) $this->user["usercod"] === (int) \Utilities\Security::getUserId();
     }
 
-    // =============================
-    // VALIDATEDATA
-    // =============================
+    /**
+     * Validates account fields and the complete role selection.
+     *
+     * Administrators cannot alter their own status or roles from this screen,
+     * which prevents accidental loss of administrative access.
+     */
     private function validateData(): bool
     {
-        // Valida entradas y aplica restricciones de autoediciaIn
         $errors = [];
         if (!\Utilities\Security::validateCsrfPost()) {
-            $errors["username_error"] = "Solicitud inválida o expirada. Recargue la página e intente nuevamente.";
+            $errors["username_error"] = "Solicitud invalida o expirada. Recargue la pagina e intente nuevamente.";
         }
 
         $this->user["usercod"] = \Utilities\Validators::sanitizeInt($_POST["usercod"] ?? 0);
@@ -132,132 +116,105 @@ class User extends PrivateController
         $this->user["userfching"] = date("Y-m-d H:i:s");
         $this->user["userpswdexp"] = date("Y-m-d H:i:s", strtotime("+90 days"));
 
-        // Email: solo editable en INS, en UPD/DEL se conserva el de la BD
         if ($this->mode === "INS") {
             $this->user["useremail"] = \Utilities\Validators::sanitizeEmail($_POST["useremail"] ?? "");
-        }
-
-        // Estado y Tipo: si se edita a si mismo, conservar los de la BD
-        if ($this->isEditingSelf() && $this->mode === "UPD") {
-            $currentData = DaoUsers::getUserById($this->user["usercod"]);
-            $this->user["userest"] = $currentData["userest"];
-            $this->user["usertipo"] = $currentData["usertipo"];
-        } else {
-            $this->user["userest"] = \Utilities\Validators::sanitizeAlphaNum($_POST["userest"] ?? "ACT");
-            $this->user["usertipo"] = \Utilities\Validators::sanitizeAlphaNum($_POST["usertipo"] ?? "NOR");
-        }
-
-        if ($this->mode === "INS") {
             $this->user["userpswd"] = trim($_POST["userpswd"] ?? "");
         }
 
-        if (\Utilities\Validators::IsEmpty($this->user["username"]))
-            $errors["username_error"] = "Nombre requerido";
-        if ($this->mode === "INS" && ($this->user["useremail"] === null || \Utilities\Validators::IsEmpty($this->user["useremail"])))
-            $errors["useremail_error"] = "Email requerido";
-        if ($this->mode === "INS" && \Utilities\Validators::IsEmpty($this->user["userpswd"]))
-            $errors["userpswd_error"] = "Password requerido";
-        if (!in_array($this->user["userest"], ["ACT", "INA"]))
-            $errors["userest_error"] = "Estado inválido";
-        if (!in_array($this->user["usertipo"], ["NOR", "ADM", "CON"]))
-            $errors["usertipo_error"] = "Tipo inválido";
+        $mustPreserveAccess = $this->isEditingSelf() && $this->mode === "UPD";
+        if ($mustPreserveAccess) {
+            $currentData = DaoUsers::getUserById((int) $this->user["usercod"]);
+            if (!$currentData) {
+                throw new \Exception("Usuario no encontrado");
+            }
+            $this->user["userest"] = $currentData["userest"];
+            $this->selectedRoleIds = $this->parseRoleIds($currentData["role_ids"] ?? "");
+        } elseif (in_array($this->mode, ["INS", "UPD"], true)) {
+            $this->user["userest"] = \Utilities\Validators::sanitizeAlphaNum($_POST["userest"] ?? "ACT");
+            $postedRoles = $_POST["role_ids"] ?? [];
+            $this->selectedRoleIds = is_array($postedRoles)
+                ? array_values(array_unique(array_filter(
+                    array_map("intval", $postedRoles),
+                    static fn(int $roleId): bool => $roleId > 0
+                )))
+                : [];
+        }
 
-        if (count($errors) > 0) {
-            foreach ($errors as $k => $v) {
-                $this->user[$k] = $v;
+        if (\Utilities\Validators::IsEmpty($this->user["username"])) {
+            $errors["username_error"] = "Nombre requerido";
+        }
+        if (
+            $this->mode === "INS"
+            && ($this->user["useremail"] === null
+                || \Utilities\Validators::IsEmpty($this->user["useremail"]))
+        ) {
+            $errors["useremail_error"] = "Email requerido";
+        }
+        if ($this->mode === "INS" && \Utilities\Validators::IsEmpty($this->user["userpswd"])) {
+            $errors["userpswd_error"] = "Password requerido";
+        }
+        if (!in_array($this->user["userest"], ["ACT", "INA"], true)) {
+            $errors["userest_error"] = "Estado invalido";
+        }
+
+        if (in_array($this->mode, ["INS", "UPD"], true)) {
+            $activeRoleIds = array_map("intval", array_column($this->availableRoles, "rolId"));
+            if ($this->selectedRoleIds === []) {
+                $errors["roles_error"] = "Seleccione al menos un rol.";
+            } elseif (array_diff($this->selectedRoleIds, $activeRoleIds) !== []) {
+                $errors["roles_error"] = "Uno o mas roles seleccionados no estan activos.";
+            }
+        }
+
+        if ($errors !== []) {
+            foreach ($errors as $key => $message) {
+                $this->user[$key] = $message;
             }
             return false;
         }
+
         return true;
     }
 
-    // =============================
-    // HANDLEPOST
-    // =============================
-    private function handlePost()
+    /**
+     * Delegates atomic user and role writes to the DAO.
+     */
+    private function handlePost(): void
     {
-        // Ejecuta accion INS/UPD/DEL segaUn modo
         switch ($this->mode) {
             case "INS":
-                $hashedPswd = \Dao\Security\Security::hashPasswordPublic($this->user["userpswd"]);
-                $now = date("Y-m-d H:i:s");
-                $newId = DaoUsers::insertUser(
-                    $this->user["username"],
-                    $this->user["useremail"],
-                    $hashedPswd,
-                    $this->user["userfching"],
-                    $this->user["userpswdest"],
-                    $this->user["userpswdexp"],
-                    $this->user["userest"],
-                    $this->user["useractcod"],
-                    $now,  // userpswdchg should be datetime, not password hash
-                    $this->user["usertipo"]
+                $this->user["userpswd"] = \Dao\Security\Security::hashPasswordPublic(
+                    $this->user["userpswd"]
                 );
-                $this->assignRole(intval($newId), $this->user["usertipo"]);
-                Site::redirectToWithMsg("index.php?page=Security_Users", "Usuario creado correctamente");
+                $this->user["userpswdchg"] = date("Y-m-d H:i:s");
+                DaoUsers::createUserWithRoles($this->user, $this->selectedRoleIds);
+                Site::redirectToWithMsg(
+                    "index.php?page=Security_Users",
+                    "Usuario creado correctamente"
+                );
                 break;
 
             case "UPD":
-                DaoUsers::updateUser(
-                    $this->user["usercod"],
-                    $this->user["username"],
-                    $this->user["useremail"],
-                    "",
-                    $this->user["userfching"],
-                    $this->user["userpswdest"] ?? "ACT",
-                    $this->user["userpswdexp"],
-                    $this->user["userest"],
-                    $this->user["useractcod"],
-                    "",
-                    $this->user["usertipo"]
+                DaoUsers::updateUserWithRoles($this->user, $this->selectedRoleIds);
+                Site::redirectToWithMsg(
+                    "index.php?page=Security_Users",
+                    "Usuario actualizado correctamente"
                 );
-                if (!$this->isEditingSelf()) {
-                    $this->assignRole($this->user["usercod"], $this->user["usertipo"]);
-                }
-                Site::redirectToWithMsg("index.php?page=Security_Users", "Usuario actualizado correctamente");
                 break;
 
             case "DEL":
-                \Dao\Security\Security::removeAllRolesFromUser($this->user["usercod"]);
-                DaoUsers::deleteUser($this->user["usercod"]);
-                Site::redirectToWithMsg("index.php?page=Security_Users", "Usuario eliminado correctamente");
+                DaoUsers::deleteUser((int) $this->user["usercod"]);
+                Site::redirectToWithMsg(
+                    "index.php?page=Security_Users",
+                    "Usuario eliminado correctamente"
+                );
                 break;
         }
     }
 
     /**
-     * Elimina todos los roles del usuario y asigna el que corresponde
-     * segaUn el tipo (usertipo) seleccionado en el formulario
-     *
-
-
-
-     * Mapa de tipos -> IDs de rol en la tabla roles:
-     *   ADM => 1  (Administrador)
-     *   NOR => 2  (Normal)
-     *   CON => 3  (Consulta)
+     * Builds the role checklist and field state consumed by the template.
      */
-    // =============================
-    // ASSIGNROLE
-    // =============================
-    private function assignRole(int $usercod, string $usertipo): void
-    {
-        \Dao\Security\Security::removeAllRolesFromUser($usercod);
-
-        $rolMap = [
-            "ADM" => 1,
-            "NOR" => 2,
-            "CON" => 3
-        ];
-
-        if (isset($rolMap[$usertipo])) {
-            \Dao\Security\Security::assignRolToUser($usercod, $rolMap[$usertipo]);
-        }
-    }
-
-    // =============================
-    // SETVIEWDATA
-    // =============================
     private function setViewData(): void
     {
         $this->viewData["FormTitle"] = sprintf(
@@ -266,40 +223,62 @@ class User extends PrivateController
         );
         $this->viewData["mode"] = $this->mode;
 
-        $isSelf       = $this->isEditingSelf() && $this->mode === "UPD";
-        $isReadonly   = ($this->mode === "DEL" || $this->mode === "DSP");
-        $selectsLocked = ($this->mode === "DEL" || $this->mode === "DSP" || $isSelf);
+        $isSelf = $this->isEditingSelf() && $this->mode === "UPD";
+        $isReadonly = in_array($this->mode, ["DEL", "DSP"], true);
+        $accessLocked = $isReadonly || $isSelf;
 
-        // Valores de los campos
-        $this->viewData["val_username"]  = htmlspecialchars($this->user["username"] ?? "", ENT_QUOTES);
-        $this->viewData["val_useremail"] = htmlspecialchars($this->user["useremail"] ?? "", ENT_QUOTES);
-        $this->viewData["val_userest"]   = $this->user["userest"] ?? "ACT";
-        $this->viewData["val_usertipo"]  = $this->user["usertipo"] ?? "NOR";
+        $this->viewData["val_username"] = htmlspecialchars(
+            $this->user["username"] ?? "",
+            ENT_QUOTES
+        );
+        $this->viewData["val_useremail"] = htmlspecialchars(
+            $this->user["useremail"] ?? "",
+            ENT_QUOTES
+        );
 
-        // Flags de estado para la vista
-        $this->viewData["field_readonly"]      = $isReadonly;
-        $this->viewData["email_readonly"]      = ($this->mode !== "INS");
-        $this->viewData["selects_locked"]      = $selectsLocked;
-        $this->viewData["is_insert"]           = ($this->mode === "INS");
-        $this->viewData["is_delete"]           = ($this->mode === "DEL");
-        $this->viewData["show_commit"]         = ($this->mode !== "DSP");
-        $this->viewData["warn_self"]           = $isSelf;
+        $this->viewData["field_readonly"] = $isReadonly;
+        $this->viewData["email_readonly"] = $this->mode !== "INS";
+        $this->viewData["selects_locked"] = $accessLocked;
+        $this->viewData["is_insert"] = $this->mode === "INS";
+        $this->viewData["is_delete"] = $this->mode === "DEL";
+        $this->viewData["show_commit"] = $this->mode !== "DSP";
+        $this->viewData["warn_self"] = $isSelf;
 
-        // Flags de opciones seleccionadas en selects
         $this->viewData["est_ACT"] = ($this->user["userest"] ?? "ACT") === "ACT";
         $this->viewData["est_INA"] = ($this->user["userest"] ?? "ACT") === "INA";
-        $this->viewData["tipo_NOR"] = ($this->user["usertipo"] ?? "NOR") === "NOR";
-        $this->viewData["tipo_ADM"] = ($this->user["usertipo"] ?? "NOR") === "ADM";
-        $this->viewData["tipo_CON"] = ($this->user["usertipo"] ?? "NOR") === "CON";
+        $this->viewData["roles"] = array_map(
+            function (array $role) use ($accessLocked): array {
+                return [
+                    "rolId" => (int) $role["rolId"],
+                    "rolNombre" => htmlspecialchars($role["rolNombre"], ENT_QUOTES),
+                    "rolDescripcion" => htmlspecialchars($role["rolDescripcion"], ENT_QUOTES),
+                    "selected" => in_array((int) $role["rolId"], $this->selectedRoleIds, true),
+                    "locked" => $accessLocked,
+                ];
+            },
+            $this->availableRoles
+        );
 
-        // Mensajes de error
-        $this->viewData["errorNombre"]  = $this->user["username_error"] ?? "";
-        $this->viewData["errorEmail"]   = $this->user["useremail_error"] ?? "";
-        $this->viewData["errorPswd"]    = $this->user["userpswd_error"] ?? "";
-        $this->viewData["errorEstado"]  = $this->user["userest_error"] ?? "";
-        $this->viewData["errorTipo"]    = $this->user["usertipo_error"] ?? "";
-
-        // usercod para la action del form
+        $this->viewData["errorNombre"] = $this->user["username_error"] ?? "";
+        $this->viewData["errorEmail"] = $this->user["useremail_error"] ?? "";
+        $this->viewData["errorPswd"] = $this->user["userpswd_error"] ?? "";
+        $this->viewData["errorEstado"] = $this->user["userest_error"] ?? "";
+        $this->viewData["errorRoles"] = $this->user["roles_error"] ?? "";
         $this->viewData["u_usercod"] = $this->user["usercod"] ?? 0;
+    }
+
+    /**
+     * Converts a GROUP_CONCAT role value into distinct integer IDs.
+     */
+    private function parseRoleIds(string $roleIds): array
+    {
+        if (trim($roleIds) === "") {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map("intval", explode(",", $roleIds)),
+            static fn(int $roleId): bool => $roleId > 0
+        )));
     }
 }

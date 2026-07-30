@@ -541,6 +541,19 @@ INSERT IGNORE INTO roles (rolId, rolNombre, rolDescripcion, rolStatus) VALUES
     (3, 'Médico', 'Acceso al portal médico, sala de espera e historial clínico', 'ACT'),
     (4, 'Paciente', 'Acceso al portal web de autoservicio del paciente', 'ACT');
 
+-- cambios para corregir textos de roles guardados con doble codificación UTF-8
+UPDATE roles
+SET
+    rolNombre = 'Recepción',
+    rolDescripcion = 'Gestión de pacientes y citas'
+WHERE rolId = 2;
+
+UPDATE roles
+SET
+    rolNombre = 'Médico',
+    rolDescripcion = 'Acceso al portal médico, sala de espera e historial clínico'
+WHERE rolId = 3;
+
 INSERT IGNORE INTO estado_cita (id, nombre_estado) VALUES
     (6, 'En Espera'),
     (7, 'En Atención');

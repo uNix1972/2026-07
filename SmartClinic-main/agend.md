@@ -303,6 +303,39 @@ Important permission rule:
   Print CSS uses A4 landscape, repeats table headers, and hides application
   navigation and report controls.
 
+## Multi-Role User Model
+
+- A system user can have several simultaneous roles. The authoritative source
+  is every currently active row in `roles_usuarios`; `usuario.usertipo` is a
+  legacy compatibility field and must not be used to decide authorization.
+- `Utilities\Security::isAuthorized()` already combines the functions granted
+  by all active roles. The navigation therefore exposes the union of the
+  user's permissions without requiring an "active role" session selector.
+- User creation and editing use
+  `Dao\Security\Users::createUserWithRoles()` and
+  `updateUserWithRoles()`. The base user row and complete role set are written
+  in one transaction so a failure cannot leave partial access assignments.
+- Role replacement deactivates previous `roles_usuarios` rows and reactivates
+  or inserts each selected role. This preserves assignment history instead of
+  deleting it. At least one active catalog role is mandatory.
+- User searches use `GROUP_CONCAT` to return one row per account with all role
+  names. Filtering uses `EXISTS`, so matching one role never removes the other
+  role badges from the result.
+- Administrators cannot change their own status or roles through the user edit
+  screen. This protects the current session from accidental lockout.
+- Landing-page precedence for combined roles is:
+  Administrator or Reception -> administrative dashboard;
+  otherwise Doctor -> doctor portal;
+  otherwise Patient -> patient portal.
+- A Doctor or Patient role grants permissions but does not itself establish
+  the clinical identity. Doctor portal access still requires
+  `medico.usuario_id`, and patient portal access still requires
+  `paciente.usuario_id`. That relationship belongs to the next user-linking
+  flow, not to the role assignment transaction.
+- No SQL migration was required for multi-role support because
+  `roles_usuarios` already models many assignments per user. The correction
+  was made in the DAO, controllers, and templates.
+
 ## Existing Operational Notes
 
 - Correct shared-Apache URL:
@@ -326,6 +359,12 @@ Important permission rule:
   database credentials, so pulling deployment configuration does not break
   local pages.
 - API tokens and passwords must not be copied into this agenda.
+- Role labels are UTF-8 throughout the SQL source, PDO DSN, and HTML layouts.
+  The live database once retained double-encoded role seed values because
+  `INSERT IGNORE` does not update an existing row after its source text is
+  corrected. The canonical SQL therefore includes explicit idempotent
+  `UPDATE roles` statements for Reception and Doctor. SQL imports should use
+  `--default-character-set=utf8mb4`.
 
 ## Rollback Convention
 

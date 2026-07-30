@@ -28,7 +28,12 @@ class Perfil extends PrivateController
         $this->viewData['userNombre'] = $userData['username'] ?? '';
         $this->viewData['userEmail'] = $userData['useremail'] ?? '';
         $this->viewData['userStatus'] = $userData['userest'] ?? '';
-        $this->viewData['userTipo'] = $userData['usertipo'] ?? '';
+        $this->viewData['userRoles'] = array_map(
+            static fn(array $role): array => [
+                'rolNombre' => $role['rolNombre'] ?? 'Rol sin nombre',
+            ],
+            DaoSecurity::getRolesByUsuario($userId)
+        );
         $this->viewData['profileError'] = $this->profileError;
         $this->viewData['profileSuccess'] = $this->profileSuccess;
         $this->viewData['hasProfileError'] = ($this->profileError !== '');

@@ -11,6 +11,8 @@ use Utilities\Site;
 // Dashboard principal para usuarios autenticados
 class HomeController extends PrivateController
 {
+    private const ROL_ADMINISTRADOR = 1;
+    private const ROL_RECEPCION = 2;
     private const ROL_MEDICO = 3;
     private const ROL_PACIENTE = 4;
 
@@ -19,21 +21,23 @@ class HomeController extends PrivateController
     // =============================
     public function run(): void
     {
-        // Este dashboard es solo para personal administrativo/recepción:
-        // carga el listado COMPLETO de pacientes (con identidad y
-        // teléfono) y de citas de TODO el sistema. PrivateController deja
-        // pasar a cualquier usuario autenticado a esta página (es la
-        // pantalla de aterrizaje compartida), así que hay que redirigir
-        // aquí mismo a doctores y pacientes a su propio portal, que sí
-        // filtra los datos a lo que a cada quien le corresponde ver.
+        // Administrative roles take precedence when a user has several roles.
+        // A clinical-only account lands in its restricted portal. Navigation
+        // permissions remain the union of all active roles.
         $userId = Security::getUserId();
-        if (Security::isInRol($userId, self::ROL_PACIENTE)) {
-            Site::redirectTo('index.php?page=PacientePortalController');
-            return;
-        }
-        if (Security::isInRol($userId, self::ROL_MEDICO)) {
-            Site::redirectTo('index.php?page=DoctoresController');
-            return;
+        $hasAdministrativeRole =
+            Security::isInRol($userId, self::ROL_ADMINISTRADOR)
+            || Security::isInRol($userId, self::ROL_RECEPCION);
+
+        if (!$hasAdministrativeRole) {
+            if (Security::isInRol($userId, self::ROL_MEDICO)) {
+                Site::redirectTo('index.php?page=DoctoresController');
+                return;
+            }
+            if (Security::isInRol($userId, self::ROL_PACIENTE)) {
+                Site::redirectTo('index.php?page=PacientePortalController');
+                return;
+            }
         }
 
         if (isset($_GET['action']) && $_GET['action'] === 'calendarPartial') {
