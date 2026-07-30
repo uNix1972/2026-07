@@ -8,6 +8,7 @@
   .form-input[readonly], .form-select:disabled { background: #f5f5f5; color: #999; cursor: not-allowed; border-color: #e0e0e0; }
   .error { color: #c0392b; font-size: 0.85rem; background: #fdecea; padding: 0.4rem 0.7rem; border-radius: 8px; }
   .self-note { color: #7a6033; font-size: 0.82rem; background: #fdf6e3; border: 1px solid #e8d5a0; padding: 0.35rem 0.7rem; border-radius: 8px; }
+  .self-access-enabled { color:#145b58; font-size:.84rem; background:#ecfbf8; border-left:3px solid #0b7a75; padding:.65rem .8rem; margin:-.7rem 0 1.2rem; }
   .roles-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
   .role-option { min-width:0; border:1px solid #d7e2f0; border-radius:8px; background:#f8fbff; overflow:hidden; }
   .role-option:has(.role-checkbox:checked) { border-color:#0b5fc6; background:#eef6ff; box-shadow:0 0 0 2px rgba(11,95,198,.1); }
@@ -89,7 +90,11 @@
 <div class="form-card">
   <h2>{{FormTitle}}</h2>
 
-  <form method="post" autocomplete="off" action="index.php?page=Security_User&mode={{mode}}&id={{u_usercod}}">
+  {{if self_access_enabled}}
+  <div class="self-access-enabled">Tiene autorización para modificar sus propios datos, estado y roles.</div>
+  {{endif self_access_enabled}}
+
+  <form method="post" autocomplete="off" action="index.php?page=Security_User&mode={{mode}}&id={{u_usercod}}" {{if confirm_self_changes}}data-confirm="¿Confirma los cambios sobre su propia cuenta? Modificar el estado o retirar el rol Administrador puede cambiar su acceso inmediatamente."{{endif confirm_self_changes}}>
     <input type="hidden" name="csrf_token" value="{{csrf_token}}">
 
     <input type="hidden" name="usercod" value="{{u_usercod}}">

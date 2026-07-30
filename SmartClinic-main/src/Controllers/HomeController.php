@@ -15,6 +15,7 @@ class HomeController extends PrivateController
     private const ROL_RECEPCION = 2;
     private const ROL_MEDICO = 3;
     private const ROL_PACIENTE = 4;
+    private const ROL_ENFERMERIA = 5;
 
     // =============================
     // RUN
@@ -32,6 +33,10 @@ class HomeController extends PrivateController
         if (!$hasAdministrativeRole) {
             if (Security::isInRol($userId, self::ROL_MEDICO)) {
                 Site::redirectTo('index.php?page=DoctoresController');
+                return;
+            }
+            if (Security::isInRol($userId, self::ROL_ENFERMERIA)) {
+                Site::redirectTo('index.php?page=EnfermeriaPortalController');
                 return;
             }
             if (Security::isInRol($userId, self::ROL_PACIENTE)) {

@@ -177,6 +177,7 @@ Credenciales adicionales:
 ```text
 doctor@smartclinic.com / Doctor#2026
 paciente@smartclinic.com / Paciente#2026
+enfermeria@smartclinic.com / Enfermeria#2026
 ```
 
 Documento de detalle:

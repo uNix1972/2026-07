@@ -322,7 +322,14 @@ Important permission rule:
   names. Filtering uses `EXISTS`, so matching one role never removes the other
   role badges from the result.
 - Administrators cannot change their own status or roles through the user edit
-  screen. This protects the current session from accidental lockout.
+  screen unless they hold the explicit `GestionarPerfilPropio` function.
+- `GestionarPerfilPropio` permits an authorized user to edit their own name,
+  email, status, and roles. Password changes remain in the dedicated password
+  flow. Administrator has this function assigned explicitly.
+- Self-management changes require a confirmation because removing the
+  Administrator role or marking the account inactive can change future access.
+  The submitted hidden user ID must match the account loaded from the route;
+  the controller never trusts that field as the update target.
 - Landing-page precedence for combined roles is:
   Administrator or Reception -> administrative dashboard;
   otherwise Doctor -> doctor portal;
@@ -335,6 +342,38 @@ Important permission rule:
 - No SQL migration was required for multi-role support because
   `roles_usuarios` already models many assignments per user. The correction
   was made in the DAO, controllers, and templates.
+
+## Nursing Portal
+
+- `EnfermerasController` is the administrative staff catalog. It creates,
+  edits, links, activates, and assigns nurses; it is not the nurse's daily
+  workspace.
+- `EnfermeriaPortalController` is the operational portal. Its first phase is
+  intentionally read-only and shows only today's patient queue.
+- The `Enfermería` role uses ID 5. Its initial permissions are
+  `Controllers\EnfermeriaPortalController` and `Menu_EnfermeriaPortal`.
+- A role grants module access but does not establish clinical identity. A
+  nursing account must also be linked through `enfermera.usuario_id`.
+- `Dao\EnfermeriaPortal` must scope every clinical query from the authenticated
+  user through an active nurse, active `enfermera_centro_salud` assignment,
+  and active health center. A submitted center ID is never an authorization
+  boundary.
+- The queue uses a half-open local-day interval (`>= today 00:00:00` and
+  `< tomorrow 00:00:00`) and prioritizes patients in waiting, confirmed, and
+  in-attention states before final states.
+- Available filters are health center, assigned area, doctor, and appointment
+  status. Filter values are accepted only when they appear in the
+  server-generated options already available to that nurse.
+- Preclinical status is informational in phase 1. The portal contains no POST
+  forms, arrival actions, vital-sign writes, nursing notes, or appointment
+  transitions.
+- A clinical-only user with role 5 is redirected from `HomeController` to the
+  nursing portal. For combined clinical roles, the landing precedence remains
+  Doctor, then Nursing, then Patient.
+- New installations include one nursing demo account linked to the nurse
+  `ENF-DEMO-001` and the `SMARTCLINIC` center in the `Preclínica` area. The
+  account is located by email rather than assuming a fixed user ID, and the
+  seed reactivates existing relationships instead of duplicating them.
 
 ## Role Permission Administration
 
@@ -378,6 +417,10 @@ Important permission rule:
 - The authenticated navigation uses a fixed header and a slide-out drawer. Its
   menu body scrolls independently so every authorized option remains reachable
   on short screens, while the logout action stays fixed at the bottom.
+- Login and logout both call `Nav::invalidateNavData()`. This is required when
+  one account signs in over an existing browser session; otherwise the new
+  user can temporarily inherit the previous account's cached menu labels even
+  though controller authorization still rejects unauthorized destinations.
 - `public/js/private-navigation.js` marks the current controller link with
   `aria-current`, synchronizes the drawer's expanded state, and supports closing
   the menu with Escape. Menu permissions and ordering still come exclusively

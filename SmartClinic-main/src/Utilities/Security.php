@@ -61,6 +61,11 @@ class Security
             session_regenerate_id(true);
         }
 
+        // El menú privado se guarda en sesión. Si una cuenta inicia sesión
+        // sobre una sesión anterior, debe reconstruirse con los permisos del
+        // usuario nuevo y no reutilizar la navegación de la cuenta previa.
+        Nav::invalidateNavData();
+
         $sessionToken = bin2hex(random_bytes(32));
         DaoSecurity::setActiveSessionToken($userId, $sessionToken);
 

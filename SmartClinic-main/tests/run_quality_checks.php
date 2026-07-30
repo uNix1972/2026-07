@@ -44,6 +44,7 @@ $routes = [
     'citascontroller' => 'Controllers\\CitasController',
     'PacientesController' => 'Controllers\\PacientesController',
     'MedicosController' => 'Controllers\\MedicosController',
+    'EnfermeriaPortalController' => 'Controllers\\EnfermeriaPortalController',
     'Home' => 'Controllers\\HomeController',
     'Sec_Login' => 'Controllers\\Sec\\Login',
     'Security_User' => 'Controllers\\Security\\User',
@@ -82,6 +83,14 @@ check(is_file(__DIR__ . '/../scripts/backup_database.sh'), 'script de respaldo p
 check(is_file(__DIR__ . '/../scripts/restore_database.sh'), 'script de restauración presente');
 
 check(is_file(__DIR__ . '/../src/Controllers/DoctoresController.php'), 'portal de doctores presente');
+check(
+    is_file(__DIR__ . '/../src/Controllers/EnfermeriaPortalController.php'),
+    'portal de enfermeria presente'
+);
+check(
+    is_file(__DIR__ . '/../src/Dao/EnfermeriaPortal.php'),
+    'DAO comentado del portal de enfermeria presente'
+);
 check(is_file(__DIR__ . '/../src/Controllers/PacientePortalController.php'), 'portal de paciente presente');
 check(is_file(__DIR__ . '/../src/Controllers/PagosController.php'), 'módulo de pagos presente');
 check(is_file(__DIR__ . '/../src/Controllers/NotificacionesController.php'), 'notificaciones internas presentes');
@@ -650,6 +659,31 @@ check(
     'formulario permite seleccionar varios roles reales'
 );
 check(
+    strpos($userController, 'OWN_ACCOUNT_FEATURE = "GestionarPerfilPropio"') !== false
+        && strpos($userController, 'canEditOwnAccount') !== false
+        && strpos($userController, '$isRestrictedSelf') !== false,
+    'edicion de la cuenta propia depende de un permiso explicito'
+);
+check(
+    strpos($userController, '$postedUserId !== $loadedUserId') !== false,
+    'edicion de usuario no confia en el ID oculto del formulario'
+);
+check(
+    strpos($userView, 'self_access_enabled') !== false
+        && strpos($userView, 'data-confirm=') !== false
+        && strpos($userView, 'retirar el rol Administrador') !== false,
+    'cambios sobre la cuenta propia muestran autorizacion y confirmacion'
+);
+check(
+    strpos(
+        $sql,
+        '-- cambios para permitir que un usuario autorizado administre su propia cuenta'
+    ) !== false
+        && strpos($sql, "'GestionarPerfilPropio'") !== false
+        && strpos($sql, "fr.rolId = 1") !== false,
+    'permiso de administracion propia documentado y asignado al Administrador'
+);
+check(
     strpos($usersController, 'users_role_id') !== false
         && strpos($usersView, 'name="role_id"') !== false
         && strpos($usersView, '{{foreach roles}}') !== false,
@@ -737,11 +771,85 @@ check(
 );
 check(strpos($navConfig, 'AuditController') !== false, 'menú de bitácora registrado');
 check(strpos($navConfig, 'DoctoresController') !== false, 'menú portal doctor registrado');
+check(
+    strpos($navConfig, 'Menu_EnfermeriaPortal') !== false,
+    'menu portal de enfermeria registrado'
+);
 check(strpos($navConfig, 'PacientePortalController') !== false, 'menú portal paciente registrado');
 check(strpos($navConfig, 'PagosController') !== false, 'menú pagos registrado');
 check(strpos($navConfig, 'NotificacionesController') !== false, 'menú notificaciones registrado');
 check(strpos($navConfig, 'BIController') !== false, 'menú BI registrado');
 check(strpos($navConfig, 'Menu_CentrosSalud') !== false, 'menú centros de salud registrado');
+
+$nursingDao = file_get_contents(
+    __DIR__ . '/../src/Dao/EnfermeriaPortal.php'
+);
+$nursingController = file_get_contents(
+    __DIR__ . '/../src/Controllers/EnfermeriaPortalController.php'
+);
+$nursingView = file_get_contents(
+    __DIR__ . '/../src/Views/templates/enfermeria_portal.view.tpl'
+);
+$homeController = file_get_contents(
+    __DIR__ . '/../src/Controllers/HomeController.php'
+);
+check(
+    strpos($nursingDao, 'Read-only data access') !== false
+        && strpos($nursingDao, 'INNER JOIN enfermera_centro_salud') !== false
+        && strpos($nursingDao, "ecs.estado = 'ACT'") !== false
+        && strpos($nursingDao, "cs.estado = 'ACT'") !== false
+        && strpos($nursingDao, 'e.usuario_id = :usuario_id') !== false,
+    'cola de enfermeria queda limitada por usuario y centros activos'
+);
+check(
+    strpos($nursingDao, 'c.fecha_hora >= :fecha_inicio') !== false
+        && strpos($nursingDao, 'c.fecha_hora < :fecha_fin') !== false
+        && strpos($nursingDao, 'executeNonQuery') === false
+        && strpos($nursingController, '$_POST') === false,
+    'primera fase del portal consulta solamente las citas de hoy'
+);
+check(
+    strpos($nursingController, 'getAllowedId') !== false
+        && strpos($nursingController, 'getAllowedString') !== false
+        && strpos($nursingController, 'La cuenta no está vinculada') !== false,
+    'controlador valida identidad clinica y filtros autorizados'
+);
+check(
+    strpos($nursingView, 'name="centro_id"') !== false
+        && strpos($nursingView, 'name="area"') !== false
+        && strpos($nursingView, 'name="medico_id"') !== false
+        && strpos($nursingView, 'name="estado_id"') !== false
+        && strpos($nursingView, 'method="POST"') === false,
+    'vista ofrece filtros de cola sin acciones clinicas'
+);
+check(
+    strpos($homeController, 'ROL_ENFERMERIA = 5') !== false
+        && strpos(
+            $homeController,
+            "index.php?page=EnfermeriaPortalController"
+        ) !== false,
+    'rol de enfermeria abre su portal como pagina inicial'
+);
+check(
+    strpos(
+        $sql,
+        '-- cambios para agregar el Portal de Enfermería: cola de pacientes de hoy'
+    ) !== false
+        && strpos($sql, "'Enfermería'") !== false
+        && strpos(
+            $sql,
+            "'Controllers\\\\EnfermeriaPortalController'"
+        ) !== false
+        && strpos($sql, "'Menu_EnfermeriaPortal'") !== false,
+    'rol y permisos del portal de enfermeria documentados en SQL'
+);
+check(
+    strpos($sql, "'enfermeria@smartclinic.com'") !== false
+        && strpos($sql, "'ENF-DEMO-001'") !== false
+        && strpos($sql, "'Preclínica'") !== false
+        && strpos($sql, '@enfermeria_usuario_id') !== false,
+    'cuenta demo de enfermeria queda vinculada a enfermera y centro'
+);
 
 check(
     strpos($navConfig, 'Menu_ContactoMensajes') !== false,
@@ -787,6 +895,14 @@ check(
         && strpos($privateNavigation, "event.key !== 'Escape'") !== false
         && strpos($privateNavigation, 'scrollIntoView') !== false,
     'menu privado identifica la pagina activa y permite cerrar con Escape'
+);
+
+$securityUtility = file_get_contents(
+    __DIR__ . '/../src/Utilities/Security.php'
+);
+check(
+    substr_count($securityUtility, 'Nav::invalidateNavData();') >= 2,
+    'login y logout reconstruyen el menu para el usuario de la sesion'
 );
 
 

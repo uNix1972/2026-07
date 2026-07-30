@@ -20,6 +20,8 @@ use Views\Renderer;
  */
 class User extends PrivateController
 {
+    private const OWN_ACCOUNT_FEATURE = "GestionarPerfilPropio";
+
     private array $viewData = [];
     private string $mode = "DSP";
     private array $availableRoles = [];
@@ -127,10 +129,22 @@ class User extends PrivateController
     }
 
     /**
+     * Checks the explicit permission that allows editing one's own email,
+     * status, and role assignments.
+     */
+    private function canEditOwnAccount(): bool
+    {
+        $userId = (int) \Utilities\Security::getUserId();
+        return $this->mode === "UPD"
+            && $this->isEditingSelf()
+            && \Utilities\Security::isAuthorized(
+                $userId,
+                self::OWN_ACCOUNT_FEATURE
+            );
+    }
+
+    /**
      * Validates account fields and the complete role selection.
-     *
-     * Administrators cannot alter their own status or roles from this screen,
-     * which prevents accidental loss of administrative access.
      */
     private function validateData(): bool
     {
@@ -139,18 +153,31 @@ class User extends PrivateController
             $errors["username_error"] = "Solicitud invalida o expirada. Recargue la pagina e intente nuevamente.";
         }
 
-        $this->user["usercod"] = \Utilities\Validators::sanitizeInt($_POST["usercod"] ?? 0);
+        $loadedUserId = (int) $this->user["usercod"];
+        $postedUserId = \Utilities\Validators::sanitizeInt(
+            $_POST["usercod"] ?? 0
+        ) ?? 0;
+        if ($this->mode !== "INS" && $postedUserId !== $loadedUserId) {
+            throw new \Exception("El usuario objetivo de la solicitud no coincide.");
+        }
+        $this->user["usercod"] = $this->mode === "INS" ? 0 : $loadedUserId;
         $this->user["username"] = \Utilities\Validators::sanitizeString($_POST["username"] ?? "");
         $this->user["useractcod"] = "admin";
         $this->user["userfching"] = date("Y-m-d H:i:s");
         $this->user["userpswdexp"] = date("Y-m-d H:i:s", strtotime("+90 days"));
 
-        if ($this->mode === "INS") {
+        $canEditOwnAccount = $this->canEditOwnAccount();
+        if ($this->mode === "INS" || $canEditOwnAccount) {
             $this->user["useremail"] = \Utilities\Validators::sanitizeEmail($_POST["useremail"] ?? "");
+        }
+        if ($this->mode === "INS") {
             $this->user["userpswd"] = trim($_POST["userpswd"] ?? "");
         }
 
-        $mustPreserveAccess = $this->isEditingSelf() && $this->mode === "UPD";
+        $mustPreserveAccess =
+            $this->isEditingSelf()
+            && $this->mode === "UPD"
+            && !$canEditOwnAccount;
         if ($mustPreserveAccess) {
             $currentData = DaoUsers::getUserById((int) $this->user["usercod"]);
             if (!$currentData) {
@@ -185,7 +212,8 @@ class User extends PrivateController
             $errors["username_error"] = "Nombre requerido";
         }
         if (
-            $this->mode === "INS"
+            in_array($this->mode, ["INS", "UPD"], true)
+            && ($this->mode === "INS" || $canEditOwnAccount)
             && ($this->user["useremail"] === null
                 || \Utilities\Validators::IsEmpty($this->user["useremail"]))
         ) {
@@ -334,8 +362,10 @@ class User extends PrivateController
         $this->viewData["mode"] = $this->mode;
 
         $isSelf = $this->isEditingSelf() && $this->mode === "UPD";
+        $canEditOwnAccount = $this->canEditOwnAccount();
+        $isRestrictedSelf = $isSelf && !$canEditOwnAccount;
         $isReadonly = in_array($this->mode, ["DEL", "DSP"], true);
-        $accessLocked = $isReadonly || $isSelf;
+        $accessLocked = $isReadonly || $isRestrictedSelf;
 
         $this->viewData["val_username"] = htmlspecialchars(
             $this->user["username"] ?? "",
@@ -347,12 +377,15 @@ class User extends PrivateController
         );
 
         $this->viewData["field_readonly"] = $isReadonly;
-        $this->viewData["email_readonly"] = $this->mode !== "INS";
+        $this->viewData["email_readonly"] =
+            $this->mode !== "INS" && !$canEditOwnAccount;
         $this->viewData["selects_locked"] = $accessLocked;
         $this->viewData["is_insert"] = $this->mode === "INS";
         $this->viewData["is_delete"] = $this->mode === "DEL";
         $this->viewData["show_commit"] = $this->mode !== "DSP";
-        $this->viewData["warn_self"] = $isSelf;
+        $this->viewData["warn_self"] = $isRestrictedSelf;
+        $this->viewData["self_access_enabled"] = $isSelf && $canEditOwnAccount;
+        $this->viewData["confirm_self_changes"] = $isSelf && $canEditOwnAccount;
 
         $this->viewData["est_ACT"] = ($this->user["userest"] ?? "ACT") === "ACT";
         $this->viewData["est_INA"] = ($this->user["userest"] ?? "ACT") === "INA";
