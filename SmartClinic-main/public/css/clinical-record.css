@@ -9,6 +9,27 @@
   padding-top: 48px;
 }
 
+.doctor-alert {
+  margin-bottom: 16px;
+  padding: 14px 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 700;
+}
+
+.doctor-alert--success {
+  color: #166534;
+  border-color: #a7d8bc;
+  background: #ecfdf3;
+}
+
+.doctor-alert--error {
+  color: #991b1b;
+  border-color: #f2a7a7;
+  background: #fef2f2;
+}
+
 .clinical-hero {
   position: relative;
   overflow: hidden;

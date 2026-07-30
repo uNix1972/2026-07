@@ -20,6 +20,13 @@ class EnfermeriaPortalController extends PrivateController
     private const CONFIRMAR_LLEGADA_FEATURE = "ConfirmarLlegadaEnfermeria";
     private const REGISTRAR_PRECLINICA_FEATURE =
         "RegistrarPreclinicaEnfermeria";
+    private const PATIENT_STATUS_OPTIONS = [
+        "confirmada" => "Confirmada",
+        "en_espera" => "En espera",
+        "preclinica_pendiente" => "Preclínica pendiente",
+        "preclinica_completada" => "Preclínica completada",
+        "en_atencion" => "En atención"
+    ];
 
     public function run(): void
     {
@@ -41,7 +48,7 @@ class EnfermeriaPortalController extends PrivateController
 
     private function index(): void
     {
-        Site::addLink("public/css/nursing-portal.css");
+        Site::addLink("public/css/nursing-portal.css?v=20260730-2");
 
         $usuarioId = (int) Security::getUserId();
         $enfermera = DaoEnfermeriaPortal::getEnfermeraByUsuario($usuarioId);
@@ -68,15 +75,13 @@ class EnfermeriaPortalController extends PrivateController
             static fn(array $cita): int => (int) $cita["medico_id"],
             $colaCompleta
         )));
-        $estadoIds = array_values(array_unique(array_map(
-            static fn(array $cita): int => (int) $cita["estado_id"],
-            $colaCompleta
-        )));
-
         $centroFiltro = $this->getAllowedId("centro_id", $centroIds);
         $areaFiltro = $this->getAllowedString("area", $areas);
         $medicoFiltro = $this->getAllowedId("medico_id", $medicoIds);
-        $estadoFiltro = $this->getAllowedId("estado_id", $estadoIds);
+        $estadoPacienteFiltro = $this->getAllowedString(
+            "estado_paciente",
+            array_keys(self::PATIENT_STATUS_OPTIONS)
+        );
 
         $cola = array_values(array_filter(
             $colaCompleta,
@@ -84,7 +89,7 @@ class EnfermeriaPortalController extends PrivateController
                 $centroFiltro,
                 $areaFiltro,
                 $medicoFiltro,
-                $estadoFiltro
+                $estadoPacienteFiltro
             ): bool {
                 return ($centroFiltro === 0
                         || (int) $cita["centro_salud_id"] === $centroFiltro)
@@ -92,8 +97,10 @@ class EnfermeriaPortalController extends PrivateController
                         || (string) $cita["enfermera_area"] === $areaFiltro)
                     && ($medicoFiltro === 0
                         || (int) $cita["medico_id"] === $medicoFiltro)
-                    && ($estadoFiltro === 0
-                        || (int) $cita["estado_id"] === $estadoFiltro);
+                    && self::matchesPatientStatus(
+                        $cita,
+                        $estadoPacienteFiltro
+                    );
             }
         ));
 
@@ -129,15 +136,17 @@ class EnfermeriaPortalController extends PrivateController
             "totalConfirmadas" => $counts["confirmadas"],
             "totalEnEspera" => $counts["en_espera"],
             "totalPreclinicaPendiente" => $counts["preclinica_pendiente"],
+            "totalPreclinicaCompletada" =>
+                $counts["preclinica_completada"],
+            "totalEnAtencion" => $counts["en_atencion"],
             "centros" => $this->buildCenterOptions($centros, $centroFiltro),
             "areas" => $this->buildStringOptions($areas, $areaFiltro),
             "medicos" => $this->buildDoctorOptions(
                 $colaCompleta,
                 $medicoFiltro
             ),
-            "estados" => $this->buildStatusOptions(
-                $colaCompleta,
-                $estadoFiltro
+            "estadosPaciente" => $this->buildPatientStatusOptions(
+                $estadoPacienteFiltro
             ),
             "centroFiltroValue" => $centroFiltro > 0
                 ? (string) $centroFiltro
@@ -146,13 +155,12 @@ class EnfermeriaPortalController extends PrivateController
             "medicoFiltroValue" => $medicoFiltro > 0
                 ? (string) $medicoFiltro
                 : "",
-            "estadoFiltroValue" => $estadoFiltro > 0
-                ? (string) $estadoFiltro
-                : "",
+            "estadoPacienteFiltroValue" =>
+                $this->escape($estadoPacienteFiltro),
             "hayFiltros" => $centroFiltro > 0
                 || $areaFiltro !== ""
                 || $medicoFiltro > 0
-                || $estadoFiltro > 0
+                || $estadoPacienteFiltro !== ""
         ]);
     }
 
@@ -216,7 +224,7 @@ class EnfermeriaPortalController extends PrivateController
             exit("Método no permitido.");
         }
 
-        Site::addLink("public/css/nursing-portal.css");
+        Site::addLink("public/css/nursing-portal.css?v=20260730-2");
         $usuarioId = (int) Security::getUserId();
         if (!Security::isAuthorized(
             $usuarioId,
@@ -449,24 +457,44 @@ class EnfermeriaPortalController extends PrivateController
         return $options;
     }
 
-    private function buildStatusOptions(array $queue, int $selectedId): array
+    private function buildPatientStatusOptions(string $selected): array
     {
-        $statuses = [];
-        foreach ($queue as $row) {
-            $statuses[(int) $row["estado_id"]] =
-                (string) $row["nombre_estado"];
-        }
-        asort($statuses, SORT_NATURAL | SORT_FLAG_CASE);
-
         $options = [];
-        foreach ($statuses as $id => $name) {
+        foreach (self::PATIENT_STATUS_OPTIONS as $value => $name) {
             $options[] = [
-                "id" => $id,
+                "value" => $value,
                 "nombre" => $this->escape($name),
-                "selected" => $id === $selectedId
+                "selected" => $value === $selected
             ];
         }
         return $options;
+    }
+
+    /**
+     * Matches the operational status without adding redundant database states.
+     *
+     * En espera includes every waiting appointment. The two preclinical
+     * filters refine that same state according to whether vital signs exist.
+     */
+    private static function matchesPatientStatus(
+        array $appointment,
+        string $selected
+    ): bool {
+        if ($selected === "") {
+            return true;
+        }
+
+        $statusId = (int) ($appointment["estado_id"] ?? 0);
+        $hasVitalSigns = !empty($appointment["signos_vitales_id"]);
+
+        return match ($selected) {
+            "confirmada" => $statusId === 2,
+            "en_espera" => $statusId === 6,
+            "preclinica_pendiente" => $statusId === 6 && !$hasVitalSigns,
+            "preclinica_completada" => $statusId === 6 && $hasVitalSigns,
+            "en_atencion" => $statusId === 7,
+            default => false
+        };
     }
 
     private function buildCounts(array $queue): array
@@ -475,7 +503,9 @@ class EnfermeriaPortalController extends PrivateController
             "total" => count($queue),
             "confirmadas" => 0,
             "en_espera" => 0,
-            "preclinica_pendiente" => 0
+            "preclinica_pendiente" => 0,
+            "preclinica_completada" => 0,
+            "en_atencion" => 0
         ];
 
         foreach ($queue as $row) {
@@ -488,6 +518,12 @@ class EnfermeriaPortalController extends PrivateController
             }
             if ($estadoId === 6 && empty($row["signos_vitales_id"])) {
                 $counts["preclinica_pendiente"]++;
+            }
+            if ($estadoId === 6 && !empty($row["signos_vitales_id"])) {
+                $counts["preclinica_completada"]++;
+            }
+            if ($estadoId === 7) {
+                $counts["en_atencion"]++;
             }
         }
 
@@ -538,11 +574,12 @@ class EnfermeriaPortalController extends PrivateController
                 $this->escape($row["nombre_estado"] ?? "");
             $row["estado_clase"] = $this->getStatusClass($estadoId);
             $row["preclinica_estado"] = empty($row["signos_vitales_id"])
-                ? "Pendiente"
-                : "Registrada";
+                ? "Preclínica pendiente"
+                : "Preclínica completada";
             $row["preclinica_clase"] = empty($row["signos_vitales_id"])
                 ? "is-pending"
                 : "is-ready";
+            $row["muestraEstadoPreclinica"] = $estadoId === 6;
             $row["esPrioritaria"] =
                 $estadoId === 6 && empty($row["signos_vitales_id"]);
             $row["puedeConfirmarLlegada"] =

@@ -50,7 +50,8 @@ class DoctoresController extends PrivateController
 
     private function index(): void
     {
-        Site::addLink('public/css/clinical-record.css');
+        Site::addLink('public/css/clinical-record.css?v=20260730-1');
+        Site::addEndScript('public/js/kardex-autocomplete.js');
         $medico = $this->getMedicoActual();
         if (!$medico) {
             http_response_code(403);
@@ -141,20 +142,25 @@ class DoctoresController extends PrivateController
             }
         }
 
-        // Catálogo para el <select> de producto de "Registrar historial y
-        // receta": cuando el paciente compra un medicamento recetado con la
-        // clínica, el médico lo elige aquí (mismo patrón de fila repetible
-        // que "Nueva factura de compra" en Compras). El precio va como dato
-        // extra solo para mostrarlo en pantalla; el precio que realmente se
-        // cobra se vuelve a leer del catálogo en el servidor al guardar,
-        // nunca se confía en el que mandó el navegador.
+        // Catálogo para el buscador de producto de "Registrar historial y
+        // receta". El precio viaja solo para mostrar una vista previa; al
+        // guardar, el servidor vuelve a leerlo del catálogo y no confía en
+        // el valor enviado por el navegador.
         $productosParaReceta = array_map(static function (array $p): array {
             return [
                 'id' => (int) $p['id'],
                 'nombre' => (string) $p['nombre'],
                 'precio_unitario' => (float) $p['precio_unitario'],
+                'unidad_medida' => (string) $p['unidad_medida'],
             ];
         }, DaoProducto::getActivos());
+        $productosRecetaJsonAttr = htmlspecialchars(
+            json_encode($productosParaReceta, JSON_UNESCAPED_UNICODE),
+            ENT_QUOTES,
+            'UTF-8'
+        );
+        $feedbackMessage = trim((string)($_GET['msg'] ?? ''));
+        $feedbackIsError = ($_GET['msg_type'] ?? '') === 'error';
 
         Renderer::render('doctor_portal', [
             'medico' => $medico,
@@ -186,8 +192,14 @@ class DoctoresController extends PrivateController
             'urlPaginaAnteriorPacientes' => $pacientes['urlAnterior'],
             'urlPaginaSiguientePacientes' => $pacientes['urlSiguiente'],
             'csrf_token' => Security::getCsrfToken(),
-            'productos' => $productosParaReceta,
-            'msg' => $_GET['msg'] ?? '',
+            'productosRecetaJsonAttr' => $productosRecetaJsonAttr,
+            'msg' => htmlspecialchars(
+                $feedbackMessage,
+                ENT_QUOTES | ENT_SUBSTITUTE,
+                'UTF-8'
+            ),
+            'msgSuccess' => $feedbackMessage !== '' && !$feedbackIsError,
+            'msgError' => $feedbackMessage !== '' && $feedbackIsError,
         ]);
     }
 
@@ -413,7 +425,10 @@ class DoctoresController extends PrivateController
                             . $enAtencion['paciente_apellidos']
                         )
                         . ' (cita #' . $enAtencion['id'] . '). Finalícela antes '
-                        . 'de iniciar otra.'
+                        . 'de iniciar otra.',
+                        '',
+                        0,
+                        true
                     );
                 }
                 $this->redirectWithMessage(
@@ -458,7 +473,10 @@ class DoctoresController extends PrivateController
         }
         if (empty($cita['historial_id'])) {
             $this->redirectWithMessage(
-                'Debe guardar el historial clínico antes de finalizar la consulta.'
+                'Debe guardar el historial clínico antes de finalizar la consulta.',
+                '',
+                0,
+                true
             );
         }
 
@@ -610,7 +628,7 @@ class DoctoresController extends PrivateController
 
     private function expediente(): void
     {
-        Site::addLink('public/css/clinical-record.css');
+        Site::addLink('public/css/clinical-record.css?v=20260730-1');
         $medico = $this->getMedicoActual();
         $pacienteId = intval($_GET['paciente_id'] ?? 0);
         [$fechaDesde, $fechaHasta] = $this->getDateRange();
@@ -704,7 +722,8 @@ class DoctoresController extends PrivateController
     private function redirectWithMessage(
         string $message,
         string $action = '',
-        int $citaId = 0
+        int $citaId = 0,
+        bool $isError = false
     ): void
     {
         $url = 'index.php?page=DoctoresController';
@@ -713,6 +732,9 @@ class DoctoresController extends PrivateController
         }
         if ($citaId > 0) {
             $url .= '&cita_id=' . $citaId;
+        }
+        if ($isError) {
+            $url .= '&msg_type=error';
         }
         Site::redirectTo($url . '&msg=' . urlencode($message));
         exit;

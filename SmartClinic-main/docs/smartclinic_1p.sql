@@ -1748,3 +1748,23 @@ CREATE TABLE IF NOT EXISTS factura_venta_detalle (
     FOREIGN KEY (factura_venta_id) REFERENCES factura_venta (id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (producto_id) REFERENCES producto (id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+-- cambios para reparar el inicio de consulta del portal médico
+-- Las instalaciones nuevas ya crean esta columna en la definición de cita.
+-- Este ALTER idempotente actualiza volúmenes existentes que se crearon antes
+-- de incorporar el temporizador de atención.
+SET @doctor_start_column_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'cita'
+      AND COLUMN_NAME = 'hora_inicio_atencion'
+);
+SET @doctor_start_sql = IF(
+    @doctor_start_column_exists = 0,
+    'ALTER TABLE cita ADD COLUMN hora_inicio_atencion DATETIME NULL AFTER fecha_hora',
+    'SET @doctor_start_noop = 1'
+);
+PREPARE doctor_start_statement FROM @doctor_start_sql;
+EXECUTE doctor_start_statement;
+DEALLOCATE PREPARE doctor_start_statement;

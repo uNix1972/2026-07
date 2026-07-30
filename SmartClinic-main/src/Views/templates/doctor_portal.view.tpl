@@ -7,9 +7,12 @@
     </div>
   </header>
 
-  {{if msg}}
-  <div class="sc-alert sc-alert--success" style="background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; padding:14px 18px; border-radius:14px; margin-bottom:16px;">{{msg}}</div>
-  {{endif msg}}
+  {{if msgSuccess}}
+  <div class="doctor-alert doctor-alert--success" role="status">{{msg}}</div>
+  {{endif msgSuccess}}
+  {{if msgError}}
+  <div class="doctor-alert doctor-alert--error" role="alert">{{msg}}</div>
+  {{endif msgError}}
 
   <section class="sc-panel-card" style="margin-bottom:22px;">
     <div class="clinical-profile">
@@ -179,16 +182,15 @@
             </label>
             <div class="receta-linea__compra" hidden>
               <div class="receta-field">
-                <label>Producto</label>
-                <select name="producto_id[]" class="select-producto-receta">
-                  <option value="">Seleccione un producto...</option>
-                  {{foreach productos}}
-                  <option value="{{id}}" data-precio="{{precio_unitario}}">{{nombre}}</option>
-                  {{endfor productos}}
-                </select>
+                <label>Buscar producto en inventario</label>
+                <div class="sc-combo" data-sc-combo data-receta-producto-combo>
+                  <input type="text" class="sc-combo-input" autocomplete="off" placeholder="Escriba el nombre del producto..." data-sc-combo-input data-options="{{~productosRecetaJsonAttr}}">
+                  <input type="hidden" name="producto_id[]" data-sc-combo-hidden value="">
+                  <div class="sc-combo-results" data-sc-combo-results hidden></div>
+                </div>
               </div>
               <div class="receta-field">
-                <label>Cantidad</label>
+                <label>Cantidad a vender</label>
                 <input type="number" name="cantidad[]" min="1" placeholder="Ej. 10">
               </div>
               <div class="receta-field">
@@ -297,6 +299,7 @@
   .receta-field input:focus,
   .receta-field select:focus { outline: none; border-color: #075fc7; box-shadow: 0 0 0 3px rgba(7, 95, 199, 0.12); }
   .receta-linea__check { display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 600; color: #172033; cursor: pointer; }
+  .receta-linea__check input { width: auto; height: auto; flex: 0 0 auto; margin: 0; }
   .receta-linea__compra {
     display: grid;
     grid-template-columns: minmax(220px, 1.6fr) minmax(110px, 0.6fr) minmax(120px, 0.7fr);
@@ -321,6 +324,30 @@
     color: #34445d;
     font-weight: 700;
   }
+  .receta-linea__compra .sc-combo { position: relative; }
+  .receta-linea__compra .sc-combo-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #d8e2ee;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 12px 28px rgba(23, 52, 94, .16);
+  }
+  .receta-linea__compra .sc-combo-option,
+  .receta-linea__compra .sc-combo-empty {
+    padding: 10px 12px;
+    color: #172033;
+    font-size: .9rem;
+  }
+  .receta-linea__compra .sc-combo-option { cursor: pointer; }
+  .receta-linea__compra .sc-combo-option:hover,
+  .receta-linea__compra .sc-combo-option.is-active { background: #eaf5fd; }
+  .receta-linea__compra .sc-combo-empty { color: #64748b; }
   @media (max-width: 640px) {
     .receta-linea__compra { grid-template-columns: 1fr; }
   }
@@ -469,17 +496,18 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 document.addEventListener('DOMContentLoaded', function () {
-  // Líneas repetibles de la receta: "+ Agregar medicamento" clona la
-  // primera fila (mismo mecanismo que "Nueva factura de compra" en
-  // Compras), y el checkbox "El paciente lo compra con nosotros"
-  // muestra/oculta el <select> de producto de esa fila. Al ser un
-  // <select> normal (no un buscador con JS propio), clonar la fila ya
-  // clona sus opciones tal cual: no hace falta re-inicializar nada.
+  /*
+   * Líneas repetibles de la receta: "+ Agregar medicamento" clona la
+   * primera fila y el checkbox muestra u oculta la compra en clínica.
+   * Se usan comentarios de bloque porque Renderer elimina los saltos de
+   * línea de la plantilla antes de entregar el JavaScript al navegador.
+   */
   var body = document.getElementById('receta-lineas-body');
   var btnAgregar = document.getElementById('btn-agregar-receta-linea');
   if (!body || !btnAgregar) {
     return;
   }
+  var plantillaFila = body.querySelector('.receta-linea').cloneNode(true);
 
   function formatearPrecio(precio) {
     var numero = parseFloat(precio);
@@ -489,51 +517,73 @@ document.addEventListener('DOMContentLoaded', function () {
     return 'L. ' + numero.toFixed(2);
   }
 
-  function actualizarPrecioPreview(fila) {
-    var select = fila.querySelector('.select-producto-receta');
+  function actualizarProductoSeleccionado(fila, producto) {
     var precioPreview = fila.querySelector('[data-precio-preview]');
-    if (!select || !precioPreview) {
+    if (!precioPreview) {
       return;
     }
-    var opcion = select.options[select.selectedIndex];
-    var precio = opcion ? opcion.getAttribute('data-precio') : null;
-    precioPreview.textContent = precio ? formatearPrecio(precio) : '—';
+    precioPreview.textContent = producto && producto.precio_unitario
+      ? formatearPrecio(producto.precio_unitario)
+      : '—';
+
+    var medicamento = fila.querySelector('input[name="medicamento[]"]');
+    if (producto && medicamento && medicamento.value.trim() === '') {
+      medicamento.value = producto.nombre || '';
+    }
   }
 
   function limpiarCompra(fila) {
-    var select = fila.querySelector('.select-producto-receta');
+    var combo = fila.querySelector('[data-receta-producto-combo]');
+    var buscador = combo ? combo.querySelector('[data-sc-combo-input]') : null;
+    var productoId = combo ? combo.querySelector('[data-sc-combo-hidden]') : null;
+    var resultados = combo ? combo.querySelector('[data-sc-combo-results]') : null;
     var cantidad = fila.querySelector('input[name="cantidad[]"]');
-    if (select) select.selectedIndex = 0;
+    if (buscador) buscador.value = '';
+    if (productoId) productoId.value = '';
+    if (resultados) {
+      resultados.hidden = true;
+      resultados.innerHTML = '';
+    }
     if (cantidad) cantidad.value = '';
-    actualizarPrecioPreview(fila);
+    actualizarProductoSeleccionado(fila, null);
   }
 
   function wireFila(fila) {
     var checkbox = fila.querySelector('.chk-comprar-aqui');
     var bloqueCompra = fila.querySelector('.receta-linea__compra');
-    var select = fila.querySelector('.select-producto-receta');
+    var combo = fila.querySelector('[data-receta-producto-combo]');
+    var buscador = combo ? combo.querySelector('[data-sc-combo-input]') : null;
+    var cantidad = fila.querySelector('input[name="cantidad[]"]');
     var removeBtn = fila.querySelector('.receta-linea__remove');
 
     if (checkbox && bloqueCompra) {
       checkbox.addEventListener('change', function () {
         bloqueCompra.hidden = !checkbox.checked;
+        if (buscador) buscador.required = checkbox.checked;
+        if (cantidad) cantidad.required = checkbox.checked;
         if (!checkbox.checked) {
           limpiarCompra(fila);
+        } else if (buscador) {
+          buscador.focus();
         }
       });
     }
 
-    if (select) {
-      select.addEventListener('change', function () {
-        actualizarPrecioPreview(fila);
+    if (combo) {
+      combo.addEventListener('sc-combo:select', function (event) {
+        actualizarProductoSeleccionado(fila, event.detail || null);
+      });
+      combo.addEventListener('sc-combo:clear', function () {
+        actualizarProductoSeleccionado(fila, null);
       });
     }
 
     if (removeBtn) {
       removeBtn.addEventListener('click', function () {
-        // La receta es opcional: a diferencia de la factura de compra, sí
-        // se puede quedar en cero líneas (el médico simplemente no marcó
-        // ningún medicamento).
+        /*
+         * La receta es opcional y puede quedarse sin líneas cuando el
+         * médico no indica ningún medicamento.
+         */
         fila.remove();
       });
     }
@@ -542,17 +592,20 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.receta-linea').forEach(wireFila);
 
   btnAgregar.addEventListener('click', function () {
-    var primeraFila = body.querySelector('.receta-linea');
-    var clon = primeraFila.cloneNode(true);
+    var clon = plantillaFila.cloneNode(true);
     clon.querySelectorAll('input[type="text"], input[type="number"]').forEach(function (input) {
       input.value = '';
     });
     clon.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
       input.checked = false;
     });
-    clon.querySelectorAll('select').forEach(function (select) {
-      select.selectedIndex = 0;
-    });
+    var productoId = clon.querySelector('[data-sc-combo-hidden]');
+    if (productoId) productoId.value = '';
+    var resultados = clon.querySelector('[data-sc-combo-results]');
+    if (resultados) {
+      resultados.hidden = true;
+      resultados.innerHTML = '';
+    }
     var bloqueCompra = clon.querySelector('.receta-linea__compra');
     if (bloqueCompra) {
       bloqueCompra.hidden = true;
@@ -563,6 +616,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     body.appendChild(clon);
     wireFila(clon);
+    var combo = clon.querySelector('[data-receta-producto-combo]');
+    if (combo && window.ScComboWidget) {
+      window.ScComboWidget.inicializar(combo);
+    }
   });
 });
 </script>

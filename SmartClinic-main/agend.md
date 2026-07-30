@@ -204,6 +204,11 @@ Important permission rule:
 - Appointment lists, doctor portal, patient portal, calendar day view, reports,
   CSV export, audit metadata, and WhatsApp confirmations expose the selected
   center and consultorio.
+- Starting a consultation changes an appointment from En Espera (state 6) to
+  En Atención (state 7) and records `cita.hora_inicio_atencion` using the
+  application timezone. Existing databases must run
+  `scripts/migrate_doctor_consultation_start.sql`; the canonical `cita`
+  definition already contains the column.
 - `MessageNotifier` receives the appointment location explicitly. It no longer
   uses a hardcoded default consultorio for new appointment messages.
 - The appointment creation form displays the selected patient's phone directly
@@ -385,6 +390,14 @@ Important permission rule:
 - Once the doctor moves the appointment out of En Espera, preclinical data is
   no longer editable from the nursing portal. The portal still does not write
   nursing evolution notes or later appointment transitions.
+- Nursing Point 4 presents one operational patient-status view without adding
+  redundant appointment states. `Confirmada`, `En espera`, and `En atención`
+  come from `cita.estado_id`; `Preclínica pendiente` and
+  `Preclínica completada` refine an appointment in En Espera according to
+  whether its `signos_vitales` row exists.
+- The `estado_paciente` filter accepts only the five server-defined status
+  keys. `En espera` intentionally includes every waiting patient, while its
+  two preclinical options narrow that group by vital-sign completion.
 - A clinical-only user with role 5 is redirected from `HomeController` to the
   nursing portal. For combined clinical roles, the landing precedence remains
   Doctor, then Nursing, then Patient.

@@ -336,6 +336,55 @@ check(
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS historial_medico') !== false, 'tabla historial médico documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS receta_medica') !== false, 'tabla recetas documentada');
 check(strpos($sql, 'CREATE TABLE IF NOT EXISTS signos_vitales') !== false, 'tabla signos vitales documentada');
+check(
+    strpos($sql, 'hora_inicio_atencion DATETIME NULL') !== false,
+    'columna de inicio de consulta documentada'
+);
+$doctorStartMigration = file_get_contents(
+    __DIR__ . '/../scripts/migrate_doctor_consultation_start.sql'
+);
+check(
+    strpos($doctorStartMigration, 'information_schema.COLUMNS') !== false
+        && strpos(
+            $doctorStartMigration,
+            'ALTER TABLE cita ADD COLUMN hora_inicio_atencion'
+        ) !== false,
+    'migracion idempotente del inicio de consulta presente'
+);
+$doctorPortalView = file_get_contents(
+    __DIR__ . '/../src/Views/templates/doctor_portal.view.tpl'
+);
+check(
+    strpos($advancedClinicDao, 'iniciarAtencionSiPosible') !== false
+        && strpos($advancedClinicDao, 'hora_inicio_atencion = :ahora') !== false
+        && strpos(
+            $doctorPortalView,
+            'action=iniciarAtencion'
+        ) !== false
+        && strpos($doctorPortalView, 'method="POST"') !== false
+        && strpos($doctorPortalView, 'name="csrf_token"') !== false,
+    'inicio de consulta persiste hora y usa formulario POST protegido'
+);
+check(
+    preg_match('/^\s*\/\//m', $doctorPortalView) === 0,
+    'javascript embebido del portal doctor resiste minificacion del renderer'
+);
+$doctorController = file_get_contents(
+    __DIR__ . '/../src/Controllers/DoctoresController.php'
+);
+$clinicalCss = file_get_contents(
+    __DIR__ . '/../public/css/clinical-record.css'
+);
+check(
+    strpos($doctorController, "'msg_type'") !== false
+        && strpos($doctorController, 'bool $isError = false') !== false
+        && strpos($doctorController, 'ENT_SUBSTITUTE') !== false
+        && strpos($doctorPortalView, 'doctor-alert--error') !== false
+        && strpos($doctorPortalView, 'role="alert"') !== false
+        && strpos($clinicalCss, '.doctor-alert--error') !== false
+        && strpos($clinicalCss, 'color: #991b1b') !== false,
+    'bloqueo por consulta activa aparece como alerta roja y segura'
+);
 check(is_file(__DIR__ . '/../scripts/migrate_expediente_clinico.sql'), 'migración de expediente presente');
 $expedienteMigration = file_get_contents(
     __DIR__ . '/../scripts/migrate_expediente_clinico.sql'
@@ -793,6 +842,9 @@ $nursingView = file_get_contents(
 $nursingPreclinicView = file_get_contents(
     __DIR__ . '/../src/Views/templates/enfermeria_preclinica.view.tpl'
 );
+$nursingCss = file_get_contents(
+    __DIR__ . '/../public/css/nursing-portal.css'
+);
 $homeController = file_get_contents(
     __DIR__ . '/../src/Controllers/HomeController.php'
 );
@@ -868,7 +920,7 @@ check(
     strpos($nursingView, 'name="centro_id"') !== false
         && strpos($nursingView, 'name="area"') !== false
         && strpos($nursingView, 'name="medico_id"') !== false
-        && strpos($nursingView, 'name="estado_id"') !== false
+        && strpos($nursingView, 'name="estado_paciente"') !== false
         && strpos($nursingView, 'action=confirmarLlegada') !== false
         && strpos($nursingView, 'method="POST"') !== false
         && strpos($nursingView, 'name="csrf_token"') !== false
@@ -894,6 +946,27 @@ check(
         ) !== false
         && strpos($nursingPreclinicView, 'data-confirm=') !== false,
     'portal de enfermeria ofrece formulario protegido de signos vitales'
+);
+check(
+    strpos($nursingController, 'PATIENT_STATUS_OPTIONS') !== false
+        && strpos($nursingController, '"confirmada" => "Confirmada"') !== false
+        && strpos($nursingController, '"en_espera" => "En espera"') !== false
+        && strpos(
+            $nursingController,
+            '"preclinica_pendiente" => "Preclínica pendiente"'
+        ) !== false
+        && strpos(
+            $nursingController,
+            '"preclinica_completada" => "Preclínica completada"'
+        ) !== false
+        && strpos($nursingController, '"en_atencion" => "En atención"') !== false
+        && strpos($nursingController, 'matchesPatientStatus') !== false
+        && strpos($nursingController, '$hasVitalSigns') !== false
+        && strpos($nursingView, '{{totalPreclinicaCompletada}}') !== false
+        && strpos($nursingView, '{{totalEnAtencion}}') !== false
+        && strpos($nursingView, 'nursing-status-stack') !== false
+        && strpos($nursingCss, '.nursing-status-stack') !== false,
+    'portal de enfermeria deriva y filtra los cinco estados del paciente'
 );
 check(
     strpos($homeController, 'ROL_ENFERMERIA = 5') !== false

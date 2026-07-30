@@ -38,10 +38,20 @@
       <strong>{{totalEnEspera}}</strong>
       <span>Ya se encuentran en el centro</span>
     </article>
-    <article class="nursing-metric nursing-metric--attention">
+    <article class="nursing-metric nursing-metric--preclinic-pending">
       <span class="nursing-metric__label">Preclínica pendiente</span>
       <strong>{{totalPreclinicaPendiente}}</strong>
       <span>Pacientes en espera sin signos</span>
+    </article>
+    <article class="nursing-metric nursing-metric--ready">
+      <span class="nursing-metric__label">Preclínica completada</span>
+      <strong>{{totalPreclinicaCompletada}}</strong>
+      <span>Pacientes listos para consulta</span>
+    </article>
+    <article class="nursing-metric nursing-metric--in-care">
+      <span class="nursing-metric__label">En atención</span>
+      <strong>{{totalEnAtencion}}</strong>
+      <span>Consulta médica iniciada</span>
     </article>
   </section>
 
@@ -84,12 +94,12 @@
         </select>
       </label>
       <label>
-        <span>Estado</span>
-        <select name="estado_id">
+        <span>Estado del paciente</span>
+        <select name="estado_paciente">
           <option value="">Todos los estados</option>
-          {{foreach estados}}
-          <option value="{{id}}" {{if selected}}selected{{endif selected}}>{{nombre}}</option>
-          {{endfor estados}}
+          {{foreach estadosPaciente}}
+          <option value="{{value}}" {{if selected}}selected{{endif selected}}>{{nombre}}</option>
+          {{endfor estadosPaciente}}
         </select>
       </label>
       <div class="nursing-filter-actions">
@@ -111,8 +121,7 @@
             <th>Paciente</th>
             <th>Doctor</th>
             <th>Ubicación</th>
-            <th>Estado</th>
-            <th>Preclínica</th>
+            <th>Estado del paciente</th>
             <th>Acción</th>
           </tr>
         </thead>
@@ -140,11 +149,13 @@
               <strong>{{centro_nombre}}</strong>
               <span class="nursing-subtext">{{enfermera_area}} · Consultorio {{consultorio}}</span>
             </td>
-            <td data-label="Estado">
-              <span class="nursing-status {{estado_clase}}">{{nombre_estado}}</span>
-            </td>
-            <td data-label="Preclínica">
-              <span class="nursing-status {{preclinica_clase}}">{{preclinica_estado}}</span>
+            <td data-label="Estado del paciente">
+              <div class="nursing-status-stack">
+                <span class="nursing-status {{estado_clase}}">{{nombre_estado}}</span>
+                {{if muestraEstadoPreclinica}}
+                <span class="nursing-status {{preclinica_clase}}">{{preclinica_estado}}</span>
+                {{endif muestraEstadoPreclinica}}
+              </div>
             </td>
             <td data-label="Acción">
               {{if puedeConfirmarLlegada}}
