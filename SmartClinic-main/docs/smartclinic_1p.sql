@@ -617,6 +617,11 @@ CREATE TABLE IF NOT EXISTS notificaciones (
     usuario_destino_id INT NULL,
     leida TINYINT(1) NOT NULL DEFAULT 0,
     fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Clave interna (no se muestra en pantalla) para que avisos que se
+    -- vuelven a evaluar en cada carga, como el de stock bajo, no generen
+    -- una fila duplicada mientras ya haya una sin leer con esta misma
+    -- referencia. Ver Dao\ClinicaAvanzada::existeNotificacionActivaPorReferencia().
+    referencia VARCHAR(120) NULL,
     FOREIGN KEY (usuario_destino_id) REFERENCES usuario(usercod) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
 

@@ -504,16 +504,23 @@ p  { color: var(--sc-gray-500); line-height: 1.75; }
     text-transform: uppercase;
 }
 .toolbar-field input,
-.toolbar-field select {
+.toolbar-field select,
+.toolbar-field textarea {
     width: 100%;
     padding: 14px 16px;
     border: 1px solid #c7c7cc;
     border-radius: 14px;
     background: #fff;
+    font-family: inherit;
     font-size: 0.95rem;
+    line-height: 1.5;
+}
+.toolbar-field textarea {
+    resize: vertical;
 }
 .toolbar-field input:focus,
-.toolbar-field select:focus {
+.toolbar-field select:focus,
+.toolbar-field textarea:focus {
     outline: none;
     border-color: #033B9F;
     box-shadow: 0 0 0 4px rgba(3, 59, 159, 0.08);
@@ -544,7 +551,9 @@ p  { color: var(--sc-gray-500); line-height: 1.75; }
     border-radius: 14px;
     background: #fff;
     resize: vertical;
-    font: inherit;
+    font-family: inherit;
+    font-size: 0.95rem;
+    line-height: 1.5;
 }
 .doctor-history-form textarea:focus {
     outline: none;

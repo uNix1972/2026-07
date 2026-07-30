@@ -112,7 +112,13 @@
     function buscarCoincidencias(query) {
       var q = normalizar(query);
       return opciones.filter(function (opcion) {
-        return normalizar(opcion.nombre).indexOf(q) !== -1;
+        // "extra" es opcional: algunos buscadores (p. ej. Médicos) lo usan
+        // para que también aparezcan sugerencias al escribir datos que no
+        // son el nombre, como la especialidad o el N° de colegiatura, sin
+        // que ese texto se muestre al elegir la opción (solo se usa para
+        // encontrarla, no para pintarla).
+        return normalizar(opcion.nombre).indexOf(q) !== -1
+          || (opcion.extra && normalizar(opcion.extra).indexOf(q) !== -1);
       });
     }
 

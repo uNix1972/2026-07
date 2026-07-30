@@ -62,7 +62,13 @@ class DoctoresController extends PrivateController
 
         $medicoId = intval($medico['id']);
         $hoy = date('Y-m-d');
-        $agendaCompleta = Clinica::getAgendaDoctor($medicoId);
+        // El médico necesita ver primero lo que requiere su atención ahora
+        // mismo (En Atención, luego En Espera), después lo confirmado y lo
+        // pendiente de confirmar, y al final lo que ya no requiere acción
+        // (completadas, no asistió, canceladas). Dentro de cada grupo se
+        // mantiene el orden cronológico, así que si un día solo tiene una
+        // cita, esa sigue siendo la única/primera de ese día.
+        $agendaCompleta = $this->ordenarAgendaPorPrioridad(Clinica::getAgendaDoctor($medicoId));
         foreach ($agendaCompleta as &$item) {
             $estadoId = intval($item['estado_id']);
             $tieneSignos = $item['temperatura'] !== null;
@@ -71,12 +77,26 @@ class DoctoresController extends PrivateController
             $item['puedeIniciarAtencion'] = in_array($estadoId, [2, 6], true) && $tieneSignos;
             $item['faltaPreclinica'] = in_array($estadoId, [2, 6], true) && !$tieneSignos;
             $item['puedeFinalizar'] = $estadoId === 7;
-            $item['puedeNoAsistio'] = in_array($estadoId, [2, 6], true);
-            // El link a Preclínica en la tabla de agenda solo debe verse
-            // cuando de verdad se puede tomar/editar ahí (cita de hoy,
-            // todavía activa). Para el resto de filas (pasadas, futuras,
-            // completadas, canceladas) no lleva a ningún lado útil.
-            $item['puedeAbrirPreclinica'] = $esHoy && in_array($estadoId, [2, 6, 7], true);
+            // "No asistió" solo tiene sentido mientras la cita sigue
+            // Confirmada (el paciente todavía no ha llegado). En cuanto se
+            // marca "En espera" es porque ya llegó y está físicamente en
+            // el centro, así que decir que "no asistió" ya no es correcto.
+            $item['puedeNoAsistio'] = $estadoId === 2;
+            // La Preclínica (toma de signos vitales) solo debe poder
+            // abrirse una vez que el paciente ya está "En espera" (o más
+            // adelante, "En atención"): si todavía está Confirmada es
+            // porque no se ha confirmado que llegó al centro, y no tiene
+            // sentido tomarle signos vitales a alguien que no ha llegado.
+            // Se deja disponible también en "En atención" a propósito: no
+            // desaparece al guardarla, sigue ahí para poder corregir o
+            // completar un dato durante la consulta (el texto del botón
+            // cambia a "Editar preclínica" una vez que ya tiene datos).
+            $item['puedeAbrirPreclinica'] = $esHoy && in_array($estadoId, [6, 7], true);
+            $item['tieneSignos'] = $tieneSignos;
+            // El PDF es el resumen de la consulta (diagnóstico, tratamiento,
+            // receta); no existe nada que mostrar hasta que la cita esté
+            // Completada, así que antes de eso no tiene sentido ofrecerlo.
+            $item['puedeVerPdf'] = $estadoId === 3;
         }
         unset($item);
 
@@ -86,7 +106,7 @@ class DoctoresController extends PrivateController
         // poder ver cualquier cita "En Atención" sin importar esos filtros,
         // por eso se guarda $agendaCompleta aparte.
         $centrosMedico = DaoMedicoCentroSalud::getActivosByMedico($medicoId);
-        $agendaFiltro = $this->sanitizeAgendaFiltro($_GET['agenda_filtro'] ?? 'todos');
+        $agendaFiltro = $this->sanitizeAgendaFiltro($_GET['agenda_filtro'] ?? 'dia');
         $centroFiltro = $this->sanitizeCentroFiltro(
             (string)($_GET['centro_filtro'] ?? 'todos'),
             $centrosMedico
@@ -103,7 +123,10 @@ class DoctoresController extends PrivateController
             $tieneSignos = $item['temperatura'] !== null;
             $item['puedeIniciarAtencion'] = $estadoId === 6 && $tieneSignos;
             $item['faltaPreclinica'] = $estadoId === 6 && !$tieneSignos;
-            $item['yaEnAtencion'] = $estadoId === 7;
+            // Una vez en atención, la Sala de espera también debe poder
+            // finalizar la consulta directamente, sin obligar al doctor a
+            // subir hasta la tabla de Agenda para hacerlo.
+            $item['puedeFinalizar'] = $estadoId === 7;
         }
         unset($item);
 
@@ -127,6 +150,15 @@ class DoctoresController extends PrivateController
                 'url' => $this->buildAgendaUrl(['centro_filtro' => $centroId]),
             ];
         }
+        // Texto del botón del dropdown: el nombre del centro activo, o
+        // "Todos los centros" si no hay ninguno filtrado en particular.
+        $centroFiltroLabel = 'Todos los centros';
+        foreach ($centrosFiltro as $centro) {
+            if ($centro['activo']) {
+                $centroFiltroLabel = $centro['nombre'];
+                break;
+            }
+        }
 
         Renderer::render('doctor_portal', [
             'medico' => $medico,
@@ -147,6 +179,7 @@ class DoctoresController extends PrivateController
             'urlFiltroMes' => $this->buildAgendaUrl(['agenda_filtro' => 'mes']),
             'urlFiltroTodos' => $this->buildAgendaUrl(['agenda_filtro' => 'todos']),
             'centrosFiltro' => $centrosFiltro,
+            'centroFiltroLabel' => $centroFiltroLabel,
             'mostrarFiltroCentros' => count($centrosMedico) > 1,
             'sala' => $sala,
             'pacientes' => $pacientes['items'],
@@ -216,13 +249,15 @@ class DoctoresController extends PrivateController
 
     /**
      * Solo acepta los valores conocidos del filtro; cualquier otra cosa
-     * (o nada) cae de vuelta a "todos" para no romper la vista.
+     * (o nada, p. ej. al volver de guardar un historial o al entrar de
+     * nuevo al portal) cae de vuelta a "dia", para que el doctor siempre
+     * empiece viendo la agenda de hoy en vez de la lista completa.
      */
     private function sanitizeAgendaFiltro(string $filtro): string
     {
         return in_array($filtro, ['dia', 'semana', 'mes', 'todos'], true)
             ? $filtro
-            : 'todos';
+            : 'dia';
     }
 
     /**
@@ -310,6 +345,37 @@ class DoctoresController extends PrivateController
                 return $fecha >= $desde && $fecha <= $hasta;
             }
         ));
+    }
+
+    /**
+     * El médico necesita ver primero lo que requiere su atención ahora
+     * mismo (En Atención, luego En Espera), después lo confirmado y lo
+     * pendiente de confirmar, y al final lo que ya no requiere acción
+     * (completadas, no asistió, canceladas). Dentro de cada grupo se
+     * mantiene el orden cronológico. Se aplica siempre, sin importar el
+     * período (Día/Semana/Mes/Todos) que esté activo, así que no hace
+     * falta ningún clic ni filtro aparte para verla ordenada así.
+     */
+    private function ordenarAgendaPorPrioridad(array $agenda): array
+    {
+        $prioridadPorEstado = [
+            7 => 0, // En Atención
+            6 => 1, // En Espera
+            2 => 2, // Confirmada
+            1 => 3, // Pendiente
+            3 => 4, // Completada
+            5 => 5, // No Asistió
+            4 => 6, // Cancelada
+        ];
+        usort($agenda, static function (array $a, array $b) use ($prioridadPorEstado): int {
+            $prioridadA = $prioridadPorEstado[intval($a['estado_id'] ?? 0)] ?? 99;
+            $prioridadB = $prioridadPorEstado[intval($b['estado_id'] ?? 0)] ?? 99;
+            if ($prioridadA !== $prioridadB) {
+                return $prioridadA <=> $prioridadB;
+            }
+            return strcmp((string)($a['fecha_hora'] ?? ''), (string)($b['fecha_hora'] ?? ''));
+        });
+        return $agenda;
     }
 
     /**
@@ -489,13 +555,23 @@ class DoctoresController extends PrivateController
         $datos = [];
         foreach ($ranges as $field => $range) {
             $raw = trim((string)($_POST[$field] ?? ''));
-            $datos[$field] = $raw === '' ? null : floatval($raw);
+            // El campo llegó vacío del formulario. El HTML ya lo marca
+            // "required", pero eso se puede saltar (formularios armados a
+            // mano, extensiones, etc.), así que se rechaza también aquí:
+            // antes esto guardaba silenciosamente NULL en todos los signos
+            // y mostraba "guardado correctamente" igual, dejando pensar
+            // que sí se registraron cuando en realidad quedaron vacíos.
+            if ($raw === '') {
+                $this->redirectWithMessage(
+                    'Complete todos los signos vitales antes de guardar.',
+                    $returnTo,
+                    $citaId
+                );
+            }
+            $datos[$field] = floatval($raw);
             if (
-                $datos[$field] !== null
-                && (
-                    $datos[$field] < $range[0]
-                    || $datos[$field] > $range[1]
-                )
+                $datos[$field] < $range[0]
+                || $datos[$field] > $range[1]
             ) {
                 $this->redirectWithMessage(
                     'Revise los rangos de los signos vitales.',

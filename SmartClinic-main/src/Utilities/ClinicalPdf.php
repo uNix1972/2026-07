@@ -16,6 +16,7 @@ class ClinicalPdf
     private array $commands = [];
     private array $cita = [];
     private float $y = 0;
+    private int $totalPages = 1;
 
     public static function download(
         string $filename,
@@ -24,7 +25,26 @@ class ClinicalPdf
     ): void {
         $generator = new self();
         $pdf = $generator->build($cita, $recetas);
+        self::send($filename, $pdf);
+    }
 
+    /**
+     * Igual que download(), pero para "Descargar todo": arma un solo PDF
+     * con una página por cada cita (mismo diseño de patientCard/vitals/
+     * clinicalNotes/prescriptions de siempre), en vez de uno por archivo.
+     * $items = [['cita' => array, 'recetas' => array], ...].
+     */
+    public static function downloadMultiple(
+        string $filename,
+        array $items
+    ): void {
+        $generator = new self();
+        $pdf = $generator->buildMultiple($items);
+        self::send($filename, $pdf);
+    }
+
+    private static function send(string $filename, string $pdf): void
+    {
         header('Content-Type: application/pdf');
         header(
             'Content-Disposition: attachment; filename="'
@@ -43,11 +63,33 @@ class ClinicalPdf
         $this->pageBottoms = [];
         $this->commands = [];
         $this->cita = $cita;
+        $this->totalPages = 1;
         $this->newPage($cita);
         $this->patientCard($cita);
         $this->vitals($cita);
         $this->clinicalNotes($cita);
         $this->prescriptions($recetas);
+        $this->closePage();
+
+        return $this->compile();
+    }
+
+    public function buildMultiple(array $items): string
+    {
+        $this->pages = [];
+        $this->pageBottoms = [];
+        $this->commands = [];
+        $this->totalPages = max(1, count($items));
+        foreach ($items as $item) {
+            $cita = $item['cita'] ?? [];
+            $recetas = $item['recetas'] ?? [];
+            $this->cita = $cita;
+            $this->newPage($cita);
+            $this->patientCard($cita);
+            $this->vitals($cita);
+            $this->clinicalNotes($cita);
+            $this->prescriptions($recetas);
+        }
         $this->closePage();
 
         return $this->compile();
@@ -115,10 +157,11 @@ class ClinicalPdf
             false,
             [0.38, 0.45, 0.55]
         );
+        $pageNumber = count($this->pages) + 1;
         $this->text(
             553,
             $footerTextY,
-            'Página 1',
+            'Página ' . $pageNumber . ' de ' . $this->totalPages,
             7.5,
             true,
             [0.38, 0.45, 0.55],
@@ -145,7 +188,11 @@ class ClinicalPdf
 
     private function patientCard(array $cita): void
     {
-        $height = 112;
+        // La fila de "Centro de salud"/"Estado" se dibuja en y-102, y su
+        // valor (labelValue baja 12pt más) queda en y-114; con 112 de alto
+        // el fondo del cuadro terminaba en y-112, un poco antes de esa
+        // línea, así que el texto se salía visualmente del recuadro azul.
+        $height = 132;
         $this->fillRect(42, $this->y - $height, 511, $height, [0.965, 0.982, 1]);
         $this->strokeRect(42, $this->y - $height, 511, $height, [0.80, 0.88, 0.96]);
         $this->text(58, $this->y - 23, 'DATOS DE LA ATENCIÓN', 9, true, [0.012, 0.231, 0.624]);

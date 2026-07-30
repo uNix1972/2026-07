@@ -39,8 +39,13 @@ class MedicosController extends PublicController
 
     private function index(): void
     {
+        // Mismo patrón exacto que "Buscar producto" en Inventario: el
+        // combo de autocompletar manda dos campos, un id (cuando el
+        // usuario hizo clic en una sugerencia puntual) y el texto libre
+        // (cuando solo escribió y le dio Enter/Buscar sin elegir nada).
+        // El id, si viene, manda sobre el texto.
+        $medicoBuscadoId = Validators::sanitizeId($_GET["medico_id"] ?? "");
         $search = Validators::sanitizeString($_GET["search"] ?? "");
-        $especialidad = Validators::sanitizeString($_GET["especialidad"] ?? "");
         $medicos = DaoMedicos::getAllMedicos();
 
         foreach ($medicos as &$medico) {
@@ -68,56 +73,103 @@ class MedicosController extends PublicController
         }
         unset($medico);
 
-        if ($search !== "" || $especialidad !== "") {
-            $searchLower = strtolower($search);
-            $especialidadLower = strtolower($especialidad);
-            $medicos = array_filter(
-                $medicos,
-                function (array $item) use ($searchLower, $especialidadLower): bool {
-                    $matchSearch = $searchLower === ""
-                        || strpos(strtolower($item["nombres"] ?? ""), $searchLower) !== false
-                        || strpos(strtolower($item["apellidos"] ?? ""), $searchLower) !== false
-                        || strpos(strtolower($item["nombre_especialidad"] ?? ""), $searchLower) !== false
-                        || strpos(strtolower($item["num_colegiatura"] ?? ""), $searchLower) !== false
-                        || strpos(strtolower($item["centros_salud"] ?? ""), $searchLower) !== false;
-                    $matchEspecialidad = $especialidadLower === ""
-                        || strpos(
-                            strtolower($item["nombre_especialidad"] ?? ""),
-                            $especialidadLower
-                        ) !== false;
+        // La lista de opciones del buscador siempre se arma ANTES de
+        // filtrar, con el listado completo (igual que productosJsonAttr
+        // en Inventario), para que el dropdown de sugerencias no dependa
+        // del filtro que ya esté aplicado.
+        // "extra" lleva especialidad + colegiatura para que el buscador
+        // también sugiera médicos al escribir esos datos y no solo el
+        // nombre (kardex-autocomplete.js compara nombre y extra).
+        $medicosParaBuscador = array_map(
+            static function (array $item): array {
+                return [
+                    "id" => (string) $item["id"],
+                    "nombre" => trim((string) $item["nombres"] . " " . (string) $item["apellidos"]),
+                    "extra" => trim(
+                        (string) ($item["nombre_especialidad"] ?? "")
+                        . " " . (string) ($item["num_colegiatura"] ?? "")
+                    ),
+                ];
+            },
+            $medicos
+        );
+        $this->viewData["medicosJsonAttr"] = htmlspecialchars(
+            json_encode($medicosParaBuscador, JSON_UNESCAPED_UNICODE),
+            ENT_QUOTES,
+            'UTF-8'
+        );
 
-                    return $matchSearch && $matchEspecialidad;
+        $medicoBuscadoNombre = "";
+        if ($medicoBuscadoId !== null) {
+            // Se eligió una sugerencia puntual: se muestra solo ese médico.
+            $medicos = array_values(array_filter(
+                $medicos,
+                function (array $item) use ($medicoBuscadoId): bool {
+                    return (int) $item["id"] === $medicoBuscadoId;
                 }
-            );
+            ));
+            $medicoBuscadoNombre = count($medicos) > 0
+                ? trim($medicos[0]["nombres"] . " " . $medicos[0]["apellidos"])
+                : $search;
+        } elseif ($search !== "") {
+            // Un solo buscador: nombres, apellidos, especialidad y
+            // colegiatura, todo con un mismo campo de texto libre. Se
+            // normaliza (sin acentos, minúsculas) para que "pediatria"
+            // encuentre "Pediatría" y viceversa.
+            $searchNormalizado = $this->normalizarBusqueda($search);
+            $medicos = array_values(array_filter(
+                $medicos,
+                function (array $item) use ($searchNormalizado): bool {
+                    return strpos($this->normalizarBusqueda((string) ($item["nombres"] ?? "")), $searchNormalizado) !== false
+                        || strpos($this->normalizarBusqueda((string) ($item["apellidos"] ?? "")), $searchNormalizado) !== false
+                        || strpos($this->normalizarBusqueda((string) ($item["nombre_especialidad"] ?? "")), $searchNormalizado) !== false
+                        || strpos($this->normalizarBusqueda((string) ($item["num_colegiatura"] ?? "")), $searchNormalizado) !== false
+                        || strpos($this->normalizarBusqueda((string) ($item["centros_salud"] ?? "")), $searchNormalizado) !== false;
+                }
+            ));
+            $medicoBuscadoNombre = $search;
         }
+
+        $medicos = array_values($medicos);
+
+        // Paginación: 5 médicos por página, aplicada DESPUÉS del filtro
+        // de búsqueda (igual que InventarioController::paginar()), para
+        // que "página 2" sea la segunda página del resultado ya filtrado.
+        $paginacion = $this->paginar($medicos, 5, "pagina");
 
         $userId = Security::getUserId();
         $isAdmin = $userId === 1 || Security::isInRol($userId, 1);
-        $this->viewData["medicos"] = array_values($medicos);
+        $this->viewData["medicos"] = $paginacion["items"];
+        $this->viewData["paginaActual"] = $paginacion["paginaActual"];
+        $this->viewData["totalPaginas"] = $paginacion["totalPaginas"];
+        $this->viewData["totalMedicos"] = count($medicos);
         $this->viewData["showCrudActions"] =
             Security::isAuthorized($userId, "MedicosController", "CTR") || $isAdmin;
         $this->viewData["canSchedule"] =
             Security::isLogged() && !$this->viewData["showCrudActions"];
-        $this->viewData["searchValue"] = $search;
-        $this->viewData["especialidadFilter"] = $especialidad;
+        $this->viewData["searchValue"] = $medicoBuscadoNombre;
+        $this->viewData["medicoBuscadoIdValue"] = $medicoBuscadoId !== null ? (string) $medicoBuscadoId : "";
+        $this->viewData["hayBusqueda"] = $medicoBuscadoId !== null || $search !== "";
         $this->viewData["consultorioNotice"] =
             $_SESSION["medicos_consultorio_notice"] ?? "";
         unset($_SESSION["medicos_consultorio_notice"]);
-        $this->viewData["especialidades"] = array_merge(
-            [[
-                "id" => 0,
-                "nombre_especialidad" => "Todas",
-                "selected" => $especialidad === ""
-            ]],
-            array_map(
-                function (array $item) use ($especialidad): array {
-                    $item["selected"] =
-                        strcasecmp($item["nombre_especialidad"], $especialidad) === 0;
-                    return $item;
-                },
-                DaoEspecialidad::getAllEspecialidades()
-            )
-        );
+
+        // URL base para los enlaces Anterior/Siguiente, conservando el
+        // filtro de búsqueda activo (mismo criterio que en Inventario).
+        $filtrosMedicosUrl = "index.php?page=MedicosController&action=index";
+        if ($medicoBuscadoId !== null) {
+            $filtrosMedicosUrl .= "&medico_id=" . $medicoBuscadoId;
+        } elseif ($search !== "") {
+            $filtrosMedicosUrl .= "&search=" . urlencode($search);
+        }
+        $this->viewData["urlPaginaAnterior"] = $paginacion["paginaActual"] > 1
+            ? $filtrosMedicosUrl . "&pagina=" . ($paginacion["paginaActual"] - 1)
+            : "";
+        $this->viewData["urlPaginaSiguiente"] = $paginacion["paginaActual"] < $paginacion["totalPaginas"]
+            ? $filtrosMedicosUrl . "&pagina=" . ($paginacion["paginaActual"] + 1)
+            : "";
+
+        Site::addEndScript('public/js/kardex-autocomplete.js');
 
         Renderer::render("medicos", $this->viewData);
     }
@@ -323,6 +375,40 @@ class MedicosController extends PublicController
 
         Site::redirectTo("index.php?page=MedicosController&action=index");
         exit;
+    }
+
+    /**
+     * Recorta un listado ya filtrado a la página pedida. Mismo criterio
+     * que InventarioController::paginar(): 20 por página, página
+     * inválida o fuera de rango se ajusta a 1.
+     */
+    private function paginar(array $items, int $porPagina, string $nombreParam): array
+    {
+        $total = count($items);
+        $totalPaginas = max(1, (int) ceil($total / $porPagina));
+        $paginaActual = Validators::sanitizeInt($_GET[$nombreParam] ?? 1, 1, $totalPaginas) ?? 1;
+        $offset = ($paginaActual - 1) * $porPagina;
+
+        return [
+            "items" => array_slice($items, $offset, $porPagina),
+            "paginaActual" => $paginaActual,
+            "totalPaginas" => $totalPaginas
+        ];
+    }
+
+    /**
+     * Quita acentos y pasa a minúsculas para que la búsqueda no distinga
+     * "Pediatria" de "Pediatría". Mismo criterio que
+     * InventarioController::normalizarBusquedaProducto().
+     */
+    private function normalizarBusqueda(string $texto): string
+    {
+        $texto = trim($texto);
+        $sinAcentos = [
+            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u', 'Ü' => 'u', 'Ñ' => 'n',
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n'
+        ];
+        return strtolower(strtr($texto, $sinAcentos));
     }
 
     private function authorizeCrud(): void

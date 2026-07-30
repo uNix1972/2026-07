@@ -18,14 +18,14 @@
     <form method="POST" action="index.php?page=DoctoresController&action=guardarSignos">
       <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="cita_id" value="{{cita_id}}"><input type="hidden" name="return_to" value="preclinica">
       <div class="clinical-fields-grid">
-        <label><span>Temperatura</span><div class="clinical-input"><input type="number" step="0.1" min="30" max="45" name="temperatura" value="{{temperatura}}" placeholder="36.5"><em>°C</em></div></label>
-        <label><span>Presión sistólica</span><div class="clinical-input"><input type="number" min="50" max="260" name="presion_sistolica" value="{{presion_sistolica}}" placeholder="120"><em>mmHg</em></div></label>
-        <label><span>Presión diastólica</span><div class="clinical-input"><input type="number" min="30" max="180" name="presion_diastolica" value="{{presion_diastolica}}" placeholder="80"><em>mmHg</em></div></label>
-        <label><span>Frecuencia cardiaca</span><div class="clinical-input"><input type="number" min="20" max="250" name="frecuencia_cardiaca" value="{{frecuencia_cardiaca}}" placeholder="72"><em>lpm</em></div></label>
-        <label><span>Frecuencia respiratoria</span><div class="clinical-input"><input type="number" min="5" max="80" name="frecuencia_respiratoria" value="{{frecuencia_respiratoria}}" placeholder="16"><em>rpm</em></div></label>
-        <label><span>Saturación de oxígeno</span><div class="clinical-input"><input type="number" step="0.1" min="50" max="100" name="saturacion_oxigeno" value="{{saturacion_oxigeno}}" placeholder="98"><em>%</em></div></label>
-        <label><span>Peso</span><div class="clinical-input"><input type="number" step="0.01" min="1" max="500" name="peso" value="{{peso}}" placeholder="70"><em>kg</em></div></label>
-        <label><span>Talla</span><div class="clinical-input"><input type="number" step="0.1" min="30" max="250" name="talla" value="{{talla}}" placeholder="170"><em>cm</em></div></label>
+        <label><span>Temperatura</span><div class="clinical-input"><input type="number" step="0.1" min="30" max="45" name="temperatura" value="{{temperatura}}" placeholder="36.5" required><em>°C</em></div></label>
+        <label><span>Presión sistólica</span><div class="clinical-input"><input type="number" min="50" max="260" name="presion_sistolica" value="{{presion_sistolica}}" placeholder="120" required><em>mmHg</em></div></label>
+        <label><span>Presión diastólica</span><div class="clinical-input"><input type="number" min="30" max="180" name="presion_diastolica" value="{{presion_diastolica}}" placeholder="80" required><em>mmHg</em></div></label>
+        <label><span>Frecuencia cardiaca</span><div class="clinical-input"><input type="number" min="20" max="250" name="frecuencia_cardiaca" value="{{frecuencia_cardiaca}}" placeholder="72" required><em>lpm</em></div></label>
+        <label><span>Frecuencia respiratoria</span><div class="clinical-input"><input type="number" min="5" max="80" name="frecuencia_respiratoria" value="{{frecuencia_respiratoria}}" placeholder="16" required><em>rpm</em></div></label>
+        <label><span>Saturación de oxígeno</span><div class="clinical-input"><input type="number" step="0.1" min="50" max="100" name="saturacion_oxigeno" value="{{saturacion_oxigeno}}" placeholder="98" required><em>%</em></div></label>
+        <label><span>Peso</span><div class="clinical-input"><input type="number" step="0.01" min="1" max="500" name="peso" value="{{peso}}" placeholder="70" required><em>kg</em></div></label>
+        <label><span>Talla</span><div class="clinical-input"><input type="number" step="0.1" min="30" max="250" name="talla" value="{{talla}}" placeholder="170" required><em>cm</em></div></label>
       </div>
       <label class="clinical-notes"><span>Observaciones de preclínica</span><textarea name="notas" maxlength="500" rows="3" placeholder="Anote condiciones relevantes para el médico...">{{signos_notas}}</textarea></label>
       <div class="clinical-form-actions"><span>El médico podrá consultar estos datos al llenar la atención y en el PDF.</span><button class="btn btn--primary" type="submit">Guardar preclínica</button></div>

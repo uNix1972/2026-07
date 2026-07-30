@@ -440,20 +440,54 @@ class ClinicaAvanzada extends Table
         return parent::obtenerRegistros($sql, []);
     }
 
-    public static function crearNotificacion(string $tipo, string $mensaje, ?int $usuarioDestino = null): int
-    {
+    public static function crearNotificacion(
+        string $tipo,
+        string $mensaje,
+        ?int $usuarioDestino = null,
+        ?string $referencia = null
+    ): int {
         parent::executeNonQuery(
-            "INSERT INTO notificaciones (tipo, mensaje, usuario_destino_id) VALUES (:tipo, :mensaje, :usuario_destino_id)",
-            ['tipo' => $tipo, 'mensaje' => $mensaje, 'usuario_destino_id' => $usuarioDestino]
+            "INSERT INTO notificaciones (tipo, mensaje, usuario_destino_id, referencia)
+             VALUES (:tipo, :mensaje, :usuario_destino_id, :referencia)",
+            [
+                'tipo' => $tipo,
+                'mensaje' => $mensaje,
+                'usuario_destino_id' => $usuarioDestino,
+                'referencia' => $referencia,
+            ]
         );
         return intval(parent::getLastInsertId());
     }
 
-    public static function getNotificaciones(int $usuarioId = 0): array
+    /**
+     * Evita crear un aviso duplicado (p. ej. stock bajo) cada vez que se
+     * recalcula la condición: mientras exista una notificación sin leer
+     * con esta misma "referencia", no se crea otra. Una vez marcada como
+     * leída, la próxima vez que se cumpla la condición sí se vuelve a
+     * avisar.
+     */
+    public static function existeNotificacionActivaPorReferencia(string $referencia): bool
     {
+        $row = parent::obtenerUnRegistro(
+            "SELECT id FROM notificaciones WHERE referencia = :referencia AND leida = 0 LIMIT 1",
+            ['referencia' => $referencia]
+        );
+        return (bool) $row;
+    }
+
+    /**
+     * "no_leidas" (default) muestra solo las pendientes, así que marcar
+     * una como leída tiene un efecto visible (desaparece de esa vista).
+     * "leidas" muestra el historial de las ya atendidas, para el botón
+     * "Ver leídas" del panel de Notificaciones.
+     */
+    public static function getNotificaciones(int $usuarioId = 0, string $filtro = 'no_leidas'): array
+    {
+        $condicionLeida = $filtro === 'leidas' ? ' AND leida = 1' : ' AND leida = 0';
         $sql = "SELECT * FROM notificaciones
-                WHERE usuario_destino_id IS NULL OR usuario_destino_id = :usuario_id
-                ORDER BY fecha_creacion DESC
+                WHERE (usuario_destino_id IS NULL OR usuario_destino_id = :usuario_id)"
+            . $condicionLeida
+            . " ORDER BY fecha_creacion DESC
                 LIMIT 50";
         return parent::obtenerRegistros($sql, ['usuario_id' => $usuarioId]);
     }

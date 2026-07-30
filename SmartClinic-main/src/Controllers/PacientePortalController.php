@@ -29,6 +29,9 @@ class PacientePortalController extends PrivateController
             case 'pdf':
                 $this->pdf();
                 break;
+            case 'pdfTodo':
+                $this->pdfTodo();
+                break;
             default:
                 $this->index();
         }
@@ -55,7 +58,14 @@ class PacientePortalController extends PrivateController
         // arma la lista de centros a partir de sus propias citas (no de
         // todos los centros del sistema) para que el filtro solo muestre
         // opciones que de verdad le aplican.
-        $citasTodas = DaoCitas::getCitasByPaciente(intval($paciente['id']));
+        // Mismo orden de prioridad que la Agenda del portal del doctor:
+        // primero lo que requiere atención inmediata (En Atención, luego
+        // En Espera), después lo confirmado y lo pendiente de confirmar,
+        // y al final lo que ya no requiere acción. Dentro de cada grupo
+        // se mantiene el orden cronológico.
+        $citasTodas = $this->ordenarCitasPorPrioridad(
+            DaoCitas::getCitasByPaciente(intval($paciente['id']))
+        );
         $centrosPaciente = $this->extraerCentrosUnicos($citasTodas);
         $centroFiltro = $this->sanitizeCentroFiltroPaciente(
             (string)($_GET['centro_filtro'] ?? 'todos'),
@@ -114,8 +124,6 @@ class PacientePortalController extends PrivateController
             ),
             'fecha_desde' => $fechaDesde ?? '',
             'fecha_hasta' => $fechaHasta ?? '',
-            'historial' => Clinica::getHistorialPaciente(intval($paciente['id'])),
-            'recetas' => Clinica::getRecetasPaciente(intval($paciente['id'])),
             'medicosJsonAttr' => $this->jsonAttrParaAutocompletar(
                 $this->mapearMedicosParaBuscador(DaoMedicos::getAllMedicos())
             ),
@@ -151,6 +159,35 @@ class PacientePortalController extends PrivateController
     private function jsonAttrParaAutocompletar(array $opciones): string
     {
         return htmlspecialchars(json_encode($opciones, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * Mismo criterio que DoctoresController::ordenarAgendaPorPrioridad():
+     * En Atención y En Espera primero (lo que requiere acción ahora),
+     * después Confirmada/Pendiente, y al final lo que ya no requiere
+     * acción (Completada, No Asistió, Cancelada). Dentro de cada grupo
+     * se mantiene el orden cronológico.
+     */
+    private function ordenarCitasPorPrioridad(array $citas): array
+    {
+        $prioridadPorEstado = [
+            7 => 0, // En Atención
+            6 => 1, // En Espera
+            2 => 2, // Confirmada
+            1 => 3, // Pendiente
+            3 => 4, // Completada
+            5 => 5, // No Asistió
+            4 => 6, // Cancelada
+        ];
+        usort($citas, static function (array $a, array $b) use ($prioridadPorEstado): int {
+            $prioridadA = $prioridadPorEstado[intval($a['estado_id'] ?? 0)] ?? 99;
+            $prioridadB = $prioridadPorEstado[intval($b['estado_id'] ?? 0)] ?? 99;
+            if ($prioridadA !== $prioridadB) {
+                return $prioridadA <=> $prioridadB;
+            }
+            return strcmp((string)($a['fecha_hora'] ?? ''), (string)($b['fecha_hora'] ?? ''));
+        });
+        return $citas;
     }
 
     /**
@@ -381,6 +418,65 @@ class PacientePortalController extends PrivateController
             'expediente-cita-' . $cita['id'] . '.pdf',
             $cita,
             $recetas
+        );
+    }
+
+    /**
+     * "Descargar todo": un solo PDF con una página por cada cita que
+     * cumpla el mismo rango de fechas que el paciente tenga filtrado en
+     * "Mi expediente por cita" (mismos $_GET['fecha_desde']/['fecha_hasta']
+     * que usa index()), en vez de tener que bajar cita por cita.
+     */
+    private function pdfTodo(): void
+    {
+        $paciente = $this->getPaciente();
+        $fechaDesde = Validators::sanitizeDate(
+            (string)($_GET['fecha_desde'] ?? '')
+        );
+        $fechaHasta = Validators::sanitizeDate(
+            (string)($_GET['fecha_hasta'] ?? '')
+        );
+        if ($fechaDesde && $fechaHasta && $fechaDesde > $fechaHasta) {
+            [$fechaDesde, $fechaHasta] = [$fechaHasta, $fechaDesde];
+        }
+
+        $citas = Clinica::getCitasExpedientePaciente(
+            intval($paciente['id']),
+            null,
+            $fechaDesde,
+            $fechaHasta
+        );
+        if (!$citas) {
+            $params = ['msg' => 'No hay citas en ese rango de fechas para descargar.'];
+            if ($fechaDesde) {
+                $params['fecha_desde'] = $fechaDesde;
+            }
+            if ($fechaHasta) {
+                $params['fecha_hasta'] = $fechaHasta;
+            }
+            Site::redirectTo(
+                'index.php?page=PacientePortalController&' . http_build_query($params)
+            );
+        }
+
+        // getCitasExpedientePaciente() no trae los datos del paciente (ya
+        // viene filtrado a un solo paciente), así que se completan aquí
+        // con los que ya tenemos, para que cada página del PDF muestre
+        // nombre e identidad igual que el PDF de una sola cita.
+        $items = [];
+        foreach ($citas as $cita) {
+            $cita['paciente_nombres'] = $paciente['nombres'] ?? '';
+            $cita['paciente_apellidos'] = $paciente['apellidos'] ?? '';
+            $cita['identidad'] = $paciente['identidad'] ?? '';
+            $recetas = empty($cita['historial_id'])
+                ? []
+                : Clinica::getRecetasHistorial(intval($cita['historial_id']));
+            $items[] = ['cita' => $cita, 'recetas' => $recetas];
+        }
+
+        ClinicalPdf::downloadMultiple(
+            'expedientes-paciente-' . intval($paciente['id']) . '.pdf',
+            $items
         );
     }
 }

@@ -56,11 +56,6 @@
       {{ifnot citas}}<p style="color:#64748b;">Aún no tiene citas registradas.</p>{{endifnot citas}}
   </section>
 
-  <div class="sc-two-columns" style="margin-top:22px;">
-    <section class="sc-panel-card"><h3>Historial médico</h3>{{if historial}}<div class="table-responsive"><table style="width:100%; border-collapse:collapse;"><tbody>{{foreach historial}}<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:12px;"><strong>{{fecha_hora}}</strong><br>{{diagnostico}}<br><span style="color:#64748b;">{{tratamiento}}</span></td></tr>{{endfor historial}}</tbody></table></div>{{endif historial}}{{ifnot historial}}<p style="color:#64748b;">Sin historial clínico registrado.</p>{{endifnot historial}}</section>
-    <section class="sc-panel-card"><h3>Recetas y órdenes</h3>{{if recetas}}<div class="table-responsive"><table style="width:100%; border-collapse:collapse;"><tbody>{{foreach recetas}}<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:12px;"><strong>{{medicamento}}</strong><br>{{indicaciones}}<br><span style="color:#64748b;">{{fecha_emision}}</span></td></tr>{{endfor recetas}}</tbody></table></div>{{endif recetas}}{{ifnot recetas}}<p style="color:#64748b;">Sin recetas registradas.</p>{{endifnot recetas}}</section>
-  </div>
-
   <section class="sc-panel-card" style="margin-top:22px;">
     <h3>Mi expediente por cita</h3>
     <p class="clinical-section-intro">Consulte cada atención, sus signos vitales y descargue una copia PDF.</p>
@@ -70,6 +65,7 @@
       <div><label for="fecha_hasta">Hasta</label><input id="fecha_hasta" type="date" name="fecha_hasta" value="{{fecha_hasta}}"></div>
       <button class="btn btn--primary" type="submit">Filtrar expedientes</button>
       <a class="btn btn--outline" href="index.php?page=PacientePortalController">Limpiar</a>
+      <a class="btn btn--primary" href="index.php?page=PacientePortalController&action=pdfTodo&fecha_desde={{fecha_desde}}&fecha_hasta={{fecha_hasta}}">Descargar todo</a>
     </form>
     {{if expedientes}}
     <div class="table-responsive">

@@ -7,6 +7,7 @@ use Dao\AjusteInventario as DaoAjusteInventario;
 use Dao\CentroSalud as DaoCentroSalud;
 use Dao\InventarioCentro as DaoInventarioCentro;
 use Dao\MovimientoInventario as DaoMovimientoInventario;
+use Dao\ClinicaAvanzada as Clinica;
 use Utilities\Security;
 use Utilities\Site;
 use Utilities\Validators;
@@ -175,6 +176,39 @@ class InventarioController extends PrivateController
                 $producto["stock_bajo"] =
                     (int) $producto["stock_centro"]
                     < (int) $producto["stock_minimo"];
+
+                // Aviso real de stock bajo: se guarda en la tabla
+                // "notificaciones" (la misma que alimenta la campanita de
+                // Notificaciones) para que no dependa de que alguien tenga
+                // esta pantalla abierta. "referencia" identifica al
+                // producto+centro para no crear un aviso duplicado en cada
+                // recarga: mientras exista uno sin leer para ese mismo
+                // producto, no se crea otro. Si se marca como leída y el
+                // stock sigue bajo, la siguiente carga vuelve a avisar.
+                // El "tipo" distingue vacío (0 unidades, se pinta rojo en
+                // Notificaciones) de solo bajo (todavía queda algo, se
+                // pinta amarillo) — ver NotificacionesController.
+                if ($producto["stock_bajo"]) {
+                    $stockActualProducto = (int) $producto["stock_centro"];
+                    $tipoAvisoStock = $stockActualProducto <= 0
+                        ? "Stock vacío"
+                        : "Stock bajo";
+                    $referenciaStock =
+                        "stock_bajo_producto_" . $productoId
+                        . "_centro_" . $centroSaludId;
+                    if (!Clinica::existeNotificacionActivaPorReferencia($referenciaStock)) {
+                        Clinica::crearNotificacion(
+                            $tipoAvisoStock,
+                            "El producto \"" . $producto["nombre"] . "\" tiene "
+                                . $stockActualProducto
+                                . " unidades en " . $centroNombreSeleccionado
+                                . " (mínimo configurado: "
+                                . (int) $producto["stock_minimo"] . ").",
+                            null,
+                            $referenciaStock
+                        );
+                    }
+                }
             } else {
                 // Modo histórico: si el producto se creó DESPUÉS de la
                 // fecha de corte, todavía no existía — mostrar "0" ahí
