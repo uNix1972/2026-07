@@ -1517,16 +1517,17 @@ SET
 WHERE f.funcionNombre = 'GestionarPerfilPropio'
   AND fr.rolId = 1;
 
--- cambios para agregar el Portal de Enfermería: cola de pacientes de hoy
--- Primera fase estrictamente de consulta. El usuario obtiene su identidad
--- clínica desde enfermera.usuario_id y solo puede ver citas pertenecientes a
--- centros activos en enfermera_centro_salud. No se modifican citas ni signos.
+-- cambios para agregar el Portal de Enfermería: cola, llegada y preclínica
+-- El usuario obtiene su identidad clínica desde enfermera.usuario_id y solo
+-- puede operar citas de centros activos en enfermera_centro_salud. La llegada
+-- cambia una cita confirmada de hoy a En Espera y la preclínica permite
+-- registrar o corregir signos vitales únicamente mientras siga En Espera.
 
 INSERT INTO roles (rolId, rolNombre, rolDescripcion, rolStatus)
 VALUES (
     5,
     'Enfermería',
-    'Acceso a la cola operativa de pacientes de los centros asignados',
+    'Acceso a la cola y preclínica de pacientes de los centros asignados',
     'ACT'
 )
 ON DUPLICATE KEY UPDATE
@@ -1548,6 +1549,18 @@ VALUES
         'Menu_EnfermeriaPortal',
         'Acceso al menú Portal Enfermería',
         'ACT'
+    ),
+    (
+        45,
+        'ConfirmarLlegadaEnfermeria',
+        'Confirmar la llegada de pacientes en centros asignados a la enfermera',
+        'ACT'
+    ),
+    (
+        46,
+        'RegistrarPreclinicaEnfermeria',
+        'Registrar signos vitales de citas en espera en centros asignados',
+        'ACT'
     )
 ON DUPLICATE KEY UPDATE
     funcionDescripcion = VALUES(funcionDescripcion),
@@ -1564,7 +1577,9 @@ SELECT
 FROM funciones f
 WHERE f.funcionNombre IN (
     'Controllers\\EnfermeriaPortalController',
-    'Menu_EnfermeriaPortal'
+    'Menu_EnfermeriaPortal',
+    'ConfirmarLlegadaEnfermeria',
+    'RegistrarPreclinicaEnfermeria'
 )
   AND NOT EXISTS (
       SELECT 1
@@ -1582,7 +1597,9 @@ SET
 WHERE fr.rolId = 5
   AND f.funcionNombre IN (
       'Controllers\\EnfermeriaPortalController',
-      'Menu_EnfermeriaPortal'
+      'Menu_EnfermeriaPortal',
+      'ConfirmarLlegadaEnfermeria',
+      'RegistrarPreclinicaEnfermeria'
   );
 
 -- Cuenta clínica de demostración para poder abrir el portal en instalaciones

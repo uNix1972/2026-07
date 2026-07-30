@@ -348,10 +348,12 @@ Important permission rule:
 - `EnfermerasController` is the administrative staff catalog. It creates,
   edits, links, activates, and assigns nurses; it is not the nurse's daily
   workspace.
-- `EnfermeriaPortalController` is the operational portal. Its first phase is
-  intentionally read-only and shows only today's patient queue.
-- The `Enfermería` role uses ID 5. Its initial permissions are
-  `Controllers\EnfermeriaPortalController` and `Menu_EnfermeriaPortal`.
+- `EnfermeriaPortalController` is the operational portal. It shows today's
+  patient queue and provides the narrowly scoped patient-arrival action.
+- The `Enfermería` role uses ID 5. Its portal permissions are
+  `Controllers\EnfermeriaPortalController`, `Menu_EnfermeriaPortal`, and
+  the actions `ConfirmarLlegadaEnfermeria` and
+  `RegistrarPreclinicaEnfermeria`.
 - A role grants module access but does not establish clinical identity. A
   nursing account must also be linked through `enfermera.usuario_id`.
 - `Dao\EnfermeriaPortal` must scope every clinical query from the authenticated
@@ -364,9 +366,25 @@ Important permission rule:
 - Available filters are health center, assigned area, doctor, and appointment
   status. Filter values are accepted only when they appear in the
   server-generated options already available to that nurse.
-- Preclinical status is informational in phase 1. The portal contains no POST
-  forms, arrival actions, vital-sign writes, nursing notes, or appointment
-  transitions.
+- Patient arrival is the only write in phase 2. It transitions an appointment
+  scheduled for today from Confirmada (state 2) to En Espera (state 6).
+- The arrival POST accepts only `cita_id`, validates CSRF and the dedicated
+  permission, and writes an audit record after success.
+- The DAO repeats the nurse, assignment, center, date, and current-state
+  authorization inside one atomic UPDATE. A repeated click, an appointment
+  outside today, a center not assigned to the nurse, or a state changed by
+  another user affects zero rows.
+- Preclinical care is the only clinical write in phase 3. A nurse may create
+  or correct the appointment's `signos_vitales` while the appointment is
+  En Espera (state 6). The form validates accepted physiological ranges and
+  requires systolic pressure to be greater than diastolic pressure.
+- Loading and saving preclinical data repeat the active nurse, assigned center,
+  local-day, and waiting-state authorization. The write uses an
+  `INSERT ... SELECT ... ON DUPLICATE KEY UPDATE`, so a submitted appointment
+  ID cannot select a different center.
+- Once the doctor moves the appointment out of En Espera, preclinical data is
+  no longer editable from the nursing portal. The portal still does not write
+  nursing evolution notes or later appointment transitions.
 - A clinical-only user with role 5 is redirected from `HomeController` to the
   nursing portal. For combined clinical roles, the landing precedence remains
   Doctor, then Nursing, then Patient.

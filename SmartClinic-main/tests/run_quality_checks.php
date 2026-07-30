@@ -790,11 +790,14 @@ $nursingController = file_get_contents(
 $nursingView = file_get_contents(
     __DIR__ . '/../src/Views/templates/enfermeria_portal.view.tpl'
 );
+$nursingPreclinicView = file_get_contents(
+    __DIR__ . '/../src/Views/templates/enfermeria_preclinica.view.tpl'
+);
 $homeController = file_get_contents(
     __DIR__ . '/../src/Controllers/HomeController.php'
 );
 check(
-    strpos($nursingDao, 'Read-only data access') !== false
+    strpos($nursingDao, 'Data access for the nursing portal queue') !== false
         && strpos($nursingDao, 'INNER JOIN enfermera_centro_salud') !== false
         && strpos($nursingDao, "ecs.estado = 'ACT'") !== false
         && strpos($nursingDao, "cs.estado = 'ACT'") !== false
@@ -804,9 +807,15 @@ check(
 check(
     strpos($nursingDao, 'c.fecha_hora >= :fecha_inicio') !== false
         && strpos($nursingDao, 'c.fecha_hora < :fecha_fin') !== false
-        && strpos($nursingDao, 'executeNonQuery') === false
-        && strpos($nursingController, '$_POST') === false,
-    'primera fase del portal consulta solamente las citas de hoy'
+        && strpos(
+            $nursingDao,
+            'confirmarLlegadaEnCentroAsignado'
+        ) !== false
+        && strpos($nursingDao, 'UPDATE cita c') !== false
+        && strpos($nursingDao, 'SET c.estado_id = 6') !== false
+        && strpos($nursingDao, 'AND c.estado_id = 2') !== false
+        && strpos($nursingDao, 'return $statement->rowCount() === 1') !== false,
+    'llegada usa transicion atomica confirmada a en espera para citas de hoy'
 );
 check(
     strpos($nursingController, 'getAllowedId') !== false
@@ -815,12 +824,76 @@ check(
     'controlador valida identidad clinica y filtros autorizados'
 );
 check(
+    strpos($nursingController, 'CONFIRMAR_LLEGADA_FEATURE') !== false
+        && strpos($nursingController, 'Security::validateCsrfPost()') !== false
+        && strpos(
+            $nursingController,
+            'DaoEnfermeriaPortal::confirmarLlegadaEnCentroAsignado'
+        ) !== false
+        && strpos($nursingController, 'AuditLogger::log') !== false
+        && strpos($nursingController, 'REQUEST_METHOD') !== false,
+    'confirmacion de llegada exige POST, CSRF, permiso dedicado y auditoria'
+);
+check(
+    strpos($nursingDao, 'getCitaPreclinicaByUsuario') !== false
+        && strpos(
+            $nursingDao,
+            'guardarSignosVitalesEnCentroAsignado'
+        ) !== false
+        && strpos($nursingDao, 'INSERT INTO signos_vitales') !== false
+        && strpos($nursingDao, 'SELECT c.id, :temperatura') !== false
+        && strpos($nursingDao, 'ON DUPLICATE KEY UPDATE') !== false
+        && strpos($nursingDao, 'AND c.estado_id = 6') !== false,
+    'DAO comentado limita lectura y escritura preclinica a citas en espera'
+);
+check(
+    strpos($nursingController, 'REGISTRAR_PRECLINICA_FEATURE') !== false
+        && strpos($nursingController, 'validateVitalSigns') !== false
+        && strpos($nursingController, 'Validators::sanitizeFloat') !== false
+        && strpos($nursingController, 'Validators::sanitizeInt') !== false
+        && strpos(
+            $nursingController,
+            '$datos["presion_sistolica"] <= $datos["presion_diastolica"]'
+        ) !== false
+        && strpos(
+            $nursingController,
+            'DaoEnfermeriaPortal::guardarSignosVitalesEnCentroAsignado'
+        ) !== false
+        && strpos($nursingController, 'REGISTRAR_PRECLINICA') !== false
+        && strpos($nursingController, 'html_entity_decode') !== false
+        && strpos($nursingController, 'sanitizeNotes') !== false,
+    'preclinica valida rangos, permiso, relacion de presion y auditoria'
+);
+check(
     strpos($nursingView, 'name="centro_id"') !== false
         && strpos($nursingView, 'name="area"') !== false
         && strpos($nursingView, 'name="medico_id"') !== false
         && strpos($nursingView, 'name="estado_id"') !== false
-        && strpos($nursingView, 'method="POST"') === false,
-    'vista ofrece filtros de cola sin acciones clinicas'
+        && strpos($nursingView, 'action=confirmarLlegada') !== false
+        && strpos($nursingView, 'method="POST"') !== false
+        && strpos($nursingView, 'name="csrf_token"') !== false
+        && strpos($nursingView, 'name="cita_id"') !== false
+        && strpos($nursingView, 'data-confirm=') !== false
+        && strpos($nursingView, 'Confirmar llegada') !== false,
+    'vista ofrece filtros y confirmacion protegida de llegada'
+);
+check(
+    strpos($nursingView, 'action=preclinica&cita_id={{id}}') !== false
+        && strpos($nursingView, '{{preclinica_accion}}') !== false
+        && strpos(
+            $nursingPreclinicView,
+            'action=guardarPreclinica'
+        ) !== false
+        && strpos($nursingPreclinicView, 'name="csrf_token"') !== false
+        && strpos($nursingPreclinicView, 'name="temperatura"') !== false
+        && strpos($nursingPreclinicView, 'name="presion_sistolica"') !== false
+        && strpos($nursingPreclinicView, 'name="presion_diastolica"') !== false
+        && strpos(
+            $nursingPreclinicView,
+            'name="saturacion_oxigeno"'
+        ) !== false
+        && strpos($nursingPreclinicView, 'data-confirm=') !== false,
+    'portal de enfermeria ofrece formulario protegido de signos vitales'
 );
 check(
     strpos($homeController, 'ROL_ENFERMERIA = 5') !== false
@@ -833,14 +906,16 @@ check(
 check(
     strpos(
         $sql,
-        '-- cambios para agregar el Portal de Enfermería: cola de pacientes de hoy'
+        '-- cambios para agregar el Portal de Enfermería: cola, llegada y preclínica'
     ) !== false
         && strpos($sql, "'Enfermería'") !== false
         && strpos(
             $sql,
             "'Controllers\\\\EnfermeriaPortalController'"
         ) !== false
-        && strpos($sql, "'Menu_EnfermeriaPortal'") !== false,
+        && strpos($sql, "'Menu_EnfermeriaPortal'") !== false
+        && strpos($sql, "'ConfirmarLlegadaEnfermeria'") !== false
+        && strpos($sql, "'RegistrarPreclinicaEnfermeria'") !== false,
     'rol y permisos del portal de enfermeria documentados en SQL'
 );
 check(

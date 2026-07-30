@@ -14,6 +14,13 @@
     </div>
   </header>
 
+  {{if mensajeExito}}
+  <div class="nursing-alert is-success" role="status">{{mensaje}}</div>
+  {{endif mensajeExito}}
+  {{if mensajeError}}
+  <div class="nursing-alert is-error" role="alert">{{mensaje}}</div>
+  {{endif mensajeError}}
+
   {{if hayCentros}}
   <section class="nursing-metrics" aria-label="Resumen de la cola filtrada">
     <article class="nursing-metric">
@@ -34,7 +41,7 @@
     <article class="nursing-metric nursing-metric--attention">
       <span class="nursing-metric__label">Preclínica pendiente</span>
       <strong>{{totalPreclinicaPendiente}}</strong>
-      <span>Solo indicador, sin acciones</span>
+      <span>Pacientes en espera sin signos</span>
     </article>
   </section>
 
@@ -106,6 +113,7 @@
             <th>Ubicación</th>
             <th>Estado</th>
             <th>Preclínica</th>
+            <th>Acción</th>
           </tr>
         </thead>
         <tbody>
@@ -137,6 +145,21 @@
             </td>
             <td data-label="Preclínica">
               <span class="nursing-status {{preclinica_clase}}">{{preclinica_estado}}</span>
+            </td>
+            <td data-label="Acción">
+              {{if puedeConfirmarLlegada}}
+              <form method="POST" action="index.php?page=EnfermeriaPortalController&action=confirmarLlegada" class="nursing-arrival-form" data-confirm="¿Confirma que el paciente ya llegó al centro de salud?">
+                <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
+                <input type="hidden" name="cita_id" value="{{id}}">
+                <button type="submit" class="btn btn--primary nursing-arrival-button">Confirmar llegada</button>
+              </form>
+              {{endif puedeConfirmarLlegada}}
+              {{if puedeRegistrarPreclinica}}
+              <a href="index.php?page=EnfermeriaPortalController&action=preclinica&cita_id={{id}}" class="btn btn--primary nursing-arrival-button">{{preclinica_accion}}</a>
+              {{endif puedeRegistrarPreclinica}}
+              {{ifnot tieneAccion}}
+              <span class="nursing-action-state">{{accion_estado}}</span>
+              {{endifnot tieneAccion}}
             </td>
           </tr>
           {{endfor cola}}

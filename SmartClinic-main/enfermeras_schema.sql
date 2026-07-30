@@ -33,12 +33,12 @@ INSERT IGNORE INTO funciones (funcionId, funcionNombre, funcionDescripcion, func
 INSERT IGNORE INTO funciones_roles (funcionRolId, funcionId, rolId, frStatus, frFechaInicio, frFechaFin) VALUES
     (74, 41, 2, 'ACT', CURRENT_TIMESTAMP, '2099-12-31 23:59:59');
 
--- Portal de Enfermería, fase 1: cola de pacientes de hoy (solo lectura).
+-- Portal de Enfermería: cola, confirmación de llegada y preclínica.
 INSERT INTO roles (rolId, rolNombre, rolDescripcion, rolStatus)
 VALUES (
     5,
     'Enfermería',
-    'Acceso a la cola operativa de pacientes de los centros asignados',
+    'Acceso a la cola y preclínica de pacientes de los centros asignados',
     'ACT'
 )
 ON DUPLICATE KEY UPDATE
@@ -60,6 +60,18 @@ VALUES
         'Menu_EnfermeriaPortal',
         'Acceso al menú Portal Enfermería',
         'ACT'
+    ),
+    (
+        45,
+        'ConfirmarLlegadaEnfermeria',
+        'Confirmar la llegada de pacientes en centros asignados a la enfermera',
+        'ACT'
+    ),
+    (
+        46,
+        'RegistrarPreclinicaEnfermeria',
+        'Registrar signos vitales de citas en espera en centros asignados',
+        'ACT'
     )
 ON DUPLICATE KEY UPDATE
     funcionDescripcion = VALUES(funcionDescripcion),
@@ -76,7 +88,9 @@ SELECT
 FROM funciones f
 WHERE f.funcionNombre IN (
     'Controllers\\EnfermeriaPortalController',
-    'Menu_EnfermeriaPortal'
+    'Menu_EnfermeriaPortal',
+    'ConfirmarLlegadaEnfermeria',
+    'RegistrarPreclinicaEnfermeria'
 )
   AND NOT EXISTS (
       SELECT 1
@@ -94,7 +108,9 @@ SET
 WHERE fr.rolId = 5
   AND f.funcionNombre IN (
       'Controllers\\EnfermeriaPortalController',
-      'Menu_EnfermeriaPortal'
+      'Menu_EnfermeriaPortal',
+      'ConfirmarLlegadaEnfermeria',
+      'RegistrarPreclinicaEnfermeria'
   );
 
 -- Cuenta clínica de demostración para poder abrir el portal en instalaciones

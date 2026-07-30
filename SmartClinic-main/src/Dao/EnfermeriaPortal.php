@@ -3,15 +3,16 @@
 namespace Dao;
 
 /**
- * Read-only data access for the nursing portal.
+ * Data access for the nursing portal queue and arrival confirmation.
  *
  * The authenticated user is never trusted to submit a nurse or health-center
  * identity. Both are derived from `enfermera.usuario_id` and the active rows
  * in `enfermera_centro_salud`. Consequently, every queue query remains scoped
  * to the centers where that nurse is currently authorized to work.
  *
- * This DAO intentionally exposes no INSERT, UPDATE, or DELETE operation. The
- * first nursing-portal increment is limited to viewing today's patient queue.
+ * The only write exposed by this phase is the atomic transition from a
+ * confirmed appointment to the waiting room. It repeats the same user-center
+ * authorization in the UPDATE itself rather than trusting a previous read.
  */
 class EnfermeriaPortal extends Table
 {
@@ -127,5 +128,207 @@ class EnfermeriaPortal extends Table
             "fecha_inicio" => $fechaInicio,
             "fecha_fin" => $fechaFin
         ]);
+    }
+
+    /**
+     * Marks a confirmed appointment as waiting after validating nurse scope.
+     *
+     * The JOIN chain is the authorization boundary: the appointment must be
+     * scheduled today in an active center currently assigned to the active
+     * nurse linked to the authenticated user. The state predicate makes the
+     * transition idempotent and concurrency-safe; a repeated click or a state
+     * changed by another user affects zero rows.
+     *
+     * This method does not accept a nurse or center ID from the request.
+     */
+    public static function confirmarLlegadaEnCentroAsignado(
+        int $citaId,
+        int $usuarioId,
+        string $fechaInicio,
+        string $fechaFin
+    ): bool {
+        $sql = "UPDATE cita c
+                INNER JOIN centro_salud cs
+                    ON cs.id = c.centro_salud_id
+                   AND cs.estado = 'ACT'
+                INNER JOIN enfermera_centro_salud ecs
+                    ON ecs.centro_salud_id = c.centro_salud_id
+                   AND ecs.estado = 'ACT'
+                INNER JOIN enfermera e
+                    ON e.id = ecs.enfermera_id
+                   AND e.estado = 'ACT'
+                   AND e.usuario_id = :usuario_id
+                SET c.estado_id = 6
+                WHERE c.id = :cita_id
+                  AND c.estado_id = 2
+                  AND c.fecha_hora >= :fecha_inicio
+                  AND c.fecha_hora < :fecha_fin";
+
+        $statement = parent::getConn()->prepare($sql);
+        $statement->execute([
+            "cita_id" => $citaId,
+            "usuario_id" => $usuarioId,
+            "fecha_inicio" => $fechaInicio,
+            "fecha_fin" => $fechaFin
+        ]);
+
+        return $statement->rowCount() === 1;
+    }
+
+    /**
+     * Loads one waiting appointment for nurse-led preclinical care.
+     *
+     * The appointment is returned only when it is scheduled today in an
+     * active health center assigned to the active nurse linked to the
+     * authenticated user. Existing vital signs are included so the nurse can
+     * correct them while the patient remains in the waiting room.
+     */
+    public static function getCitaPreclinicaByUsuario(
+        int $citaId,
+        int $usuarioId,
+        string $fechaInicio,
+        string $fechaFin
+    ): ?array {
+        $sql = "SELECT c.id, c.fecha_hora, c.estado_id, c.consultorio,
+                       p.identidad AS paciente_identidad,
+                       p.nombres AS paciente_nombres,
+                       p.apellidos AS paciente_apellidos,
+                       p.telefono AS paciente_telefono,
+                       m.nombres AS medico_nombres,
+                       m.apellidos AS medico_apellidos,
+                       esp.nombre_especialidad,
+                       ec.nombre_estado,
+                       cs.codigo AS centro_codigo,
+                       cs.nombre AS centro_nombre,
+                       cs.ciudad AS centro_ciudad,
+                       ecs.area AS enfermera_area,
+                       sv.id AS signos_vitales_id,
+                       sv.temperatura, sv.presion_sistolica,
+                       sv.presion_diastolica, sv.frecuencia_cardiaca,
+                       sv.frecuencia_respiratoria, sv.saturacion_oxigeno,
+                       sv.peso, sv.talla, sv.notas AS signos_notas
+                FROM cita c
+                INNER JOIN paciente p ON p.id = c.paciente_id
+                INNER JOIN medico m ON m.id = c.medico_id
+                LEFT JOIN especialidad esp ON esp.id = m.especialidad_id
+                INNER JOIN estado_cita ec ON ec.id = c.estado_id
+                INNER JOIN centro_salud cs
+                    ON cs.id = c.centro_salud_id
+                   AND cs.estado = 'ACT'
+                INNER JOIN enfermera_centro_salud ecs
+                    ON ecs.centro_salud_id = c.centro_salud_id
+                   AND ecs.estado = 'ACT'
+                INNER JOIN enfermera e
+                    ON e.id = ecs.enfermera_id
+                   AND e.estado = 'ACT'
+                   AND e.usuario_id = :usuario_id
+                LEFT JOIN signos_vitales sv ON sv.cita_id = c.id
+                WHERE c.id = :cita_id
+                  AND c.estado_id = 6
+                  AND c.fecha_hora >= :fecha_inicio
+                  AND c.fecha_hora < :fecha_fin
+                LIMIT 1";
+
+        $row = parent::obtenerUnRegistro($sql, [
+            "cita_id" => $citaId,
+            "usuario_id" => $usuarioId,
+            "fecha_inicio" => $fechaInicio,
+            "fecha_fin" => $fechaFin
+        ]);
+
+        return $row ?: null;
+    }
+
+    /**
+     * Creates or corrects vital signs for an authorized waiting appointment.
+     *
+     * Authorization is embedded in the INSERT SELECT so a submitted
+     * appointment ID cannot bypass the nurse-center relationship. The unique
+     * cita_id key makes this an upsert, while the waiting-state predicate
+     * prevents changes after the doctor starts or finishes the consultation.
+     */
+    public static function guardarSignosVitalesEnCentroAsignado(
+        int $citaId,
+        int $usuarioId,
+        string $fechaInicio,
+        string $fechaFin,
+        array $datos
+    ): bool {
+        $sql = "INSERT INTO signos_vitales
+                    (cita_id, temperatura, presion_sistolica,
+                     presion_diastolica, frecuencia_cardiaca,
+                     frecuencia_respiratoria, saturacion_oxigeno,
+                     peso, talla, notas)
+                SELECT c.id, :temperatura, :presion_sistolica,
+                       :presion_diastolica, :frecuencia_cardiaca,
+                       :frecuencia_respiratoria, :saturacion_oxigeno,
+                       :peso, :talla, :notas
+                FROM cita c
+                INNER JOIN centro_salud cs
+                    ON cs.id = c.centro_salud_id
+                   AND cs.estado = 'ACT'
+                INNER JOIN enfermera_centro_salud ecs
+                    ON ecs.centro_salud_id = c.centro_salud_id
+                   AND ecs.estado = 'ACT'
+                INNER JOIN enfermera e
+                    ON e.id = ecs.enfermera_id
+                   AND e.estado = 'ACT'
+                   AND e.usuario_id = :usuario_id
+                WHERE c.id = :cita_id
+                  AND c.estado_id = 6
+                  AND c.fecha_hora >= :fecha_inicio
+                  AND c.fecha_hora < :fecha_fin
+                ON DUPLICATE KEY UPDATE
+                    temperatura = VALUES(temperatura),
+                    presion_sistolica = VALUES(presion_sistolica),
+                    presion_diastolica = VALUES(presion_diastolica),
+                    frecuencia_cardiaca = VALUES(frecuencia_cardiaca),
+                    frecuencia_respiratoria = VALUES(frecuencia_respiratoria),
+                    saturacion_oxigeno = VALUES(saturacion_oxigeno),
+                    peso = VALUES(peso),
+                    talla = VALUES(talla),
+                    notas = VALUES(notas)";
+
+        $params = array_merge($datos, [
+            "cita_id" => $citaId,
+            "usuario_id" => $usuarioId,
+            "fecha_inicio" => $fechaInicio,
+            "fecha_fin" => $fechaFin
+        ]);
+        $conn = parent::getConn();
+        $statement = $conn->prepare($sql);
+        $statement->execute($params);
+
+        if ($statement->rowCount() > 0) {
+            return true;
+        }
+
+        $verifySql = "SELECT sv.id
+                      FROM signos_vitales sv
+                      INNER JOIN cita c ON c.id = sv.cita_id
+                      INNER JOIN centro_salud cs
+                          ON cs.id = c.centro_salud_id
+                         AND cs.estado = 'ACT'
+                      INNER JOIN enfermera_centro_salud ecs
+                          ON ecs.centro_salud_id = c.centro_salud_id
+                         AND ecs.estado = 'ACT'
+                      INNER JOIN enfermera e
+                          ON e.id = ecs.enfermera_id
+                         AND e.estado = 'ACT'
+                         AND e.usuario_id = :usuario_id
+                      WHERE c.id = :cita_id
+                        AND c.estado_id = 6
+                        AND c.fecha_hora >= :fecha_inicio
+                        AND c.fecha_hora < :fecha_fin
+                      LIMIT 1";
+        $verify = $conn->prepare($verifySql);
+        $verify->execute([
+            "cita_id" => $citaId,
+            "usuario_id" => $usuarioId,
+            "fecha_inicio" => $fechaInicio,
+            "fecha_fin" => $fechaFin
+        ]);
+
+        return $verify->fetchColumn() !== false;
     }
 }
