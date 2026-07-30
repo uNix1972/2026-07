@@ -159,8 +159,46 @@
         <div class="toolbar-field"><label for="diagnostico">Diagnóstico</label><textarea id="diagnostico" name="diagnostico" required rows="3"></textarea></div>
         <div class="toolbar-field"><label for="tratamiento">Tratamiento</label><textarea id="tratamiento" name="tratamiento" rows="3"></textarea></div>
         <div class="toolbar-field"><label for="observaciones">Observaciones</label><textarea id="observaciones" name="observaciones" rows="2"></textarea></div>
-        <div class="toolbar-field"><label for="medicamento">Medicamento/orden</label><input id="medicamento" name="medicamento" placeholder="Receta u orden de examen"></div>
-        <div class="toolbar-field"><label for="indicaciones">Indicaciones</label><textarea id="indicaciones" name="indicaciones" rows="2"></textarea></div>
+        <div class="receta-lineas-heading">
+          <strong>Receta</strong>
+          <p class="clinical-section-intro" style="margin:2px 0 10px;">Agregue un medicamento por línea. Si el paciente lo compra con la clínica, márquelo y busque el producto: se genera una factura y se descuenta del inventario del centro.</p>
+        </div>
+        <div id="receta-lineas-body" class="receta-lineas-editor">
+          <div class="receta-linea">
+            <button type="button" class="btn-remove-linea receta-linea__remove" title="Quitar medicamento">&times;</button>
+            <div class="receta-field">
+              <label>Medicamento</label>
+              <input type="text" name="medicamento[]" placeholder="Nombre del medicamento u orden">
+            </div>
+            <div class="receta-field">
+              <label>Indicaciones</label>
+              <input type="text" name="indicaciones[]" placeholder="Dosis, frecuencia, duración...">
+            </div>
+            <label class="receta-linea__check">
+              <input type="checkbox" class="chk-comprar-aqui"> El paciente lo compra con nosotros
+            </label>
+            <div class="receta-linea__compra" hidden>
+              <div class="receta-field">
+                <label>Producto</label>
+                <select name="producto_id[]" class="select-producto-receta">
+                  <option value="">Seleccione un producto...</option>
+                  {{foreach productos}}
+                  <option value="{{id}}" data-precio="{{precio_unitario}}">{{nombre}}</option>
+                  {{endfor productos}}
+                </select>
+              </div>
+              <div class="receta-field">
+                <label>Cantidad</label>
+                <input type="number" name="cantidad[]" min="1" placeholder="Ej. 10">
+              </div>
+              <div class="receta-field">
+                <label>Precio unitario</label>
+                <span class="receta-linea__precio" data-precio-preview>—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button type="button" id="btn-agregar-receta-linea" class="btn btn--outline" style="margin:10px 0 18px;">+ Agregar medicamento</button>
         <button type="submit" class="btn btn--primary">Guardar historial</button>
       </form>
   </section>
@@ -221,6 +259,72 @@
   </section>
 </div>
 <style>
+  /* Líneas repetibles de la receta ("+ Agregar medicamento"): cada fila
+     tiene medicamento/indicaciones y, si se marca "comprar con nosotros",
+     un buscador de producto + cantidad + precio informativo. */
+  .receta-lineas-editor { display: grid; gap: 12px; margin-bottom: 4px; }
+  .receta-linea {
+    position: relative;
+    display: grid;
+    gap: 10px;
+    padding: 16px 52px 16px 16px;
+    border: 1px solid #d8e2ee;
+    border-left: 4px solid #16827a;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+  .receta-linea:focus-within {
+    border-color: #78a8dc;
+    border-left-color: #075fc7;
+    box-shadow: 0 8px 22px rgba(23, 52, 94, 0.08);
+  }
+  .receta-linea__remove { position: absolute; top: 14px; right: 14px; margin-top: 0; width: 34px; height: 34px; font-size: 1.25rem; }
+  .receta-field { display: grid; min-width: 0; gap: 6px; }
+  .receta-field label { color: #34445d; font-size: .78rem; font-weight: 800; }
+  .receta-field input,
+  .receta-field select {
+    width: 100%;
+    min-width: 0;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid #b9c6d6;
+    border-radius: 8px;
+    background: #fff;
+    color: #172033;
+    font: inherit;
+    box-sizing: border-box;
+  }
+  .receta-field input:focus,
+  .receta-field select:focus { outline: none; border-color: #075fc7; box-shadow: 0 0 0 3px rgba(7, 95, 199, 0.12); }
+  .receta-linea__check { display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 600; color: #172033; cursor: pointer; }
+  .receta-linea__compra {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.6fr) minmax(110px, 0.6fr) minmax(120px, 0.7fr);
+    gap: 12px;
+    align-items: end;
+    padding-top: 6px;
+    border-top: 1px dashed #cbd5e1;
+  }
+  /* El atributo HTML "hidden" pierde contra cualquier regla de "display"
+     del propio autor (como la de arriba), así que sin este selector el
+     bloque de compra se quedaba visible siempre, aunque el checkbox
+     estuviera desmarcado. Este selector es más específico y gana. */
+  .receta-linea__compra[hidden] { display: none; }
+  .receta-linea__precio {
+    display: flex;
+    align-items: center;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px dashed #b9c6d6;
+    border-radius: 8px;
+    background: #eef2f7;
+    color: #34445d;
+    font-weight: 700;
+  }
+  @media (max-width: 640px) {
+    .receta-linea__compra { grid-template-columns: 1fr; }
+  }
+
   /* Dropdown "Centro de salud" junto al título de la Agenda del doctor:
      botón que despliega, hacia abajo, una barra de búsqueda + la lista
      de centros, sin afectar el resto de la tarjeta. */
@@ -361,6 +465,104 @@ document.addEventListener('DOMContentLoaded', function () {
     if (event.key === 'Escape' && wrapper.classList.contains('is-open')) {
       cerrar();
     }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  // Líneas repetibles de la receta: "+ Agregar medicamento" clona la
+  // primera fila (mismo mecanismo que "Nueva factura de compra" en
+  // Compras), y el checkbox "El paciente lo compra con nosotros"
+  // muestra/oculta el <select> de producto de esa fila. Al ser un
+  // <select> normal (no un buscador con JS propio), clonar la fila ya
+  // clona sus opciones tal cual: no hace falta re-inicializar nada.
+  var body = document.getElementById('receta-lineas-body');
+  var btnAgregar = document.getElementById('btn-agregar-receta-linea');
+  if (!body || !btnAgregar) {
+    return;
+  }
+
+  function formatearPrecio(precio) {
+    var numero = parseFloat(precio);
+    if (isNaN(numero)) {
+      return '—';
+    }
+    return 'L. ' + numero.toFixed(2);
+  }
+
+  function actualizarPrecioPreview(fila) {
+    var select = fila.querySelector('.select-producto-receta');
+    var precioPreview = fila.querySelector('[data-precio-preview]');
+    if (!select || !precioPreview) {
+      return;
+    }
+    var opcion = select.options[select.selectedIndex];
+    var precio = opcion ? opcion.getAttribute('data-precio') : null;
+    precioPreview.textContent = precio ? formatearPrecio(precio) : '—';
+  }
+
+  function limpiarCompra(fila) {
+    var select = fila.querySelector('.select-producto-receta');
+    var cantidad = fila.querySelector('input[name="cantidad[]"]');
+    if (select) select.selectedIndex = 0;
+    if (cantidad) cantidad.value = '';
+    actualizarPrecioPreview(fila);
+  }
+
+  function wireFila(fila) {
+    var checkbox = fila.querySelector('.chk-comprar-aqui');
+    var bloqueCompra = fila.querySelector('.receta-linea__compra');
+    var select = fila.querySelector('.select-producto-receta');
+    var removeBtn = fila.querySelector('.receta-linea__remove');
+
+    if (checkbox && bloqueCompra) {
+      checkbox.addEventListener('change', function () {
+        bloqueCompra.hidden = !checkbox.checked;
+        if (!checkbox.checked) {
+          limpiarCompra(fila);
+        }
+      });
+    }
+
+    if (select) {
+      select.addEventListener('change', function () {
+        actualizarPrecioPreview(fila);
+      });
+    }
+
+    if (removeBtn) {
+      removeBtn.addEventListener('click', function () {
+        // La receta es opcional: a diferencia de la factura de compra, sí
+        // se puede quedar en cero líneas (el médico simplemente no marcó
+        // ningún medicamento).
+        fila.remove();
+      });
+    }
+  }
+
+  document.querySelectorAll('.receta-linea').forEach(wireFila);
+
+  btnAgregar.addEventListener('click', function () {
+    var primeraFila = body.querySelector('.receta-linea');
+    var clon = primeraFila.cloneNode(true);
+    clon.querySelectorAll('input[type="text"], input[type="number"]').forEach(function (input) {
+      input.value = '';
+    });
+    clon.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
+      input.checked = false;
+    });
+    clon.querySelectorAll('select').forEach(function (select) {
+      select.selectedIndex = 0;
+    });
+    var bloqueCompra = clon.querySelector('.receta-linea__compra');
+    if (bloqueCompra) {
+      bloqueCompra.hidden = true;
+    }
+    var precioPreview = clon.querySelector('[data-precio-preview]');
+    if (precioPreview) {
+      precioPreview.textContent = '—';
+    }
+    body.appendChild(clon);
+    wireFila(clon);
   });
 });
 </script>

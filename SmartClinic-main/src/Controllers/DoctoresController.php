@@ -3,7 +3,9 @@
 namespace Controllers;
 
 use Dao\ClinicaAvanzada as Clinica;
+use Dao\FacturaVenta as DaoFacturaVenta;
 use Dao\MedicoCentroSalud as DaoMedicoCentroSalud;
+use Dao\Producto as DaoProducto;
 use Utilities\AuditLogger;
 use Utilities\ClinicalPdf;
 use Utilities\Security;
@@ -139,6 +141,21 @@ class DoctoresController extends PrivateController
             }
         }
 
+        // Catálogo para el <select> de producto de "Registrar historial y
+        // receta": cuando el paciente compra un medicamento recetado con la
+        // clínica, el médico lo elige aquí (mismo patrón de fila repetible
+        // que "Nueva factura de compra" en Compras). El precio va como dato
+        // extra solo para mostrarlo en pantalla; el precio que realmente se
+        // cobra se vuelve a leer del catálogo en el servidor al guardar,
+        // nunca se confía en el que mandó el navegador.
+        $productosParaReceta = array_map(static function (array $p): array {
+            return [
+                'id' => (int) $p['id'],
+                'nombre' => (string) $p['nombre'],
+                'precio_unitario' => (float) $p['precio_unitario'],
+            ];
+        }, DaoProducto::getActivos());
+
         Renderer::render('doctor_portal', [
             'medico' => $medico,
             'medico_nombres' => $medico['nombres'],
@@ -169,6 +186,7 @@ class DoctoresController extends PrivateController
             'urlPaginaAnteriorPacientes' => $pacientes['urlAnterior'],
             'urlPaginaSiguientePacientes' => $pacientes['urlSiguiente'],
             'csrf_token' => Security::getCsrfToken(),
+            'productos' => $productosParaReceta,
             'msg' => $_GET['msg'] ?? '',
         ]);
     }
@@ -483,8 +501,6 @@ class DoctoresController extends PrivateController
         $diagnostico = trim((string)($_POST['diagnostico'] ?? ''));
         $tratamiento = trim((string)($_POST['tratamiento'] ?? ''));
         $observaciones = trim((string)($_POST['observaciones'] ?? ''));
-        $medicamento = trim((string)($_POST['medicamento'] ?? ''));
-        $indicaciones = trim((string)($_POST['indicaciones'] ?? ''));
 
         if ($motivo === '' || $diagnostico === '') {
             $this->redirectWithMessage(
@@ -499,13 +515,86 @@ class DoctoresController extends PrivateController
             $tratamiento,
             $observaciones
         );
-        if ($medicamento !== '' || $indicaciones !== '') {
+
+        // La receta ahora es una lista de líneas (un medicamento por fila,
+        // "+ Agregar medicamento" en el formulario) en vez de un solo campo.
+        // Cada línea se guarda siempre como receta_medica (es la orden
+        // escrita); si además el médico marcó "el paciente lo compra con
+        // nosotros" y buscó un producto del inventario, esa línea también
+        // entra a $lineasVenta para generar una factura de venta al final.
+        $medicamentos = is_array($_POST['medicamento'] ?? null) ? $_POST['medicamento'] : [];
+        $indicacionesLineas = is_array($_POST['indicaciones'] ?? null) ? $_POST['indicaciones'] : [];
+        $productoIds = is_array($_POST['producto_id'] ?? null) ? $_POST['producto_id'] : [];
+        $cantidades = is_array($_POST['cantidad'] ?? null) ? $_POST['cantidad'] : [];
+
+        $lineasVenta = [];
+        foreach ($medicamentos as $index => $rawMedicamento) {
+            $medicamentoLinea = trim((string) $rawMedicamento);
+            $indicacionesLinea = trim((string) ($indicacionesLineas[$index] ?? ''));
+            if ($medicamentoLinea === '' && $indicacionesLinea === '') {
+                // Fila vacía (el médico le dio "+ Agregar medicamento" pero
+                // no la llenó, o la dejó en blanco al quitar otra): se
+                // ignora en silencio en vez de guardar una receta vacía.
+                continue;
+            }
+
             Clinica::guardarReceta(
                 $historialId,
-                $medicamento ?: 'Indicaciones generales',
-                $indicaciones ?: 'Según criterio médico'
+                $medicamentoLinea !== '' ? $medicamentoLinea : 'Indicaciones generales',
+                $indicacionesLinea !== '' ? $indicacionesLinea : 'Según criterio médico'
             );
+
+            $productoId = Validators::sanitizeId($productoIds[$index] ?? 0);
+            if ($productoId === null) {
+                // Esta línea no tiene producto elegido: el paciente no la
+                // compra con la clínica, se queda solo como receta escrita.
+                continue;
+            }
+            $cantidad = Validators::sanitizeInt($cantidades[$index] ?? 0, 1);
+            if ($cantidad === null) {
+                continue;
+            }
+            $producto = DaoProducto::getById($productoId);
+            if (!$producto || ($producto['estado'] ?? '') !== 'ACT') {
+                continue;
+            }
+            // El precio se vuelve a leer del catálogo aquí, no se confía en
+            // ningún precio que haya viajado desde el formulario.
+            $lineasVenta[] = [
+                'producto_id' => $productoId,
+                'cantidad' => $cantidad,
+                'precio_unitario' => (float) $producto['precio_unitario'],
+            ];
         }
+
+        $mensajeFinal = 'Historial clínico guardado.';
+        if (!empty($lineasVenta)) {
+            try {
+                $venta = DaoFacturaVenta::insertConDetalle(
+                    $historialId,
+                    (int) $cita['paciente_id'],
+                    (int) $cita['centro_salud_id'],
+                    (int) Security::getUserId(),
+                    $lineasVenta
+                );
+                $mensajeFinal .= ' Factura de venta ' . $venta['numero_factura'] . ' generada.';
+                AuditLogger::log(
+                    'VENTA_MEDICAMENTO',
+                    'Doctores',
+                    'Factura de venta ' . $venta['numero_factura'] . ' generada para la cita #' . $citaId,
+                    ['cita_id' => $citaId, 'historial_id' => $historialId, 'factura_venta_id' => $venta['id']]
+                );
+            } catch (\DomainException | \RuntimeException $e) {
+                // El historial y la receta ya quedaron guardados arriba;
+                // solo falló la venta (p. ej. no había suficiente stock).
+                // Se avisa puntualmente en vez de perder todo lo demás.
+                $this->redirectWithMessage(
+                    'Historial clínico guardado, pero no se pudo generar la '
+                    . 'venta del medicamento: ' . $e->getMessage()
+                );
+            }
+        }
+
         Clinica::crearNotificacion(
             'Historial clínico',
             'Se registró historial clínico para la cita #' . $citaId
@@ -516,7 +605,7 @@ class DoctoresController extends PrivateController
             'Historial médico guardado',
             ['cita_id' => $citaId]
         );
-        $this->redirectWithMessage('Historial clínico guardado.');
+        $this->redirectWithMessage($mensajeFinal);
     }
 
     private function expediente(): void

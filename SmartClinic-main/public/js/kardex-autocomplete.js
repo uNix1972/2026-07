@@ -236,4 +236,11 @@
     var combos = document.querySelectorAll("[data-sc-combo]");
     combos.forEach(inicializarCombo);
   });
+
+  // Formularios con filas repetibles (p. ej. la receta del doctor, que
+  // agrega una fila por medicamento) clonan HTML después de que ya corrió
+  // el DOMContentLoaded de arriba, así que sus combos nuevos no quedan
+  // inicializados solos. Se expone esta función para que ese JS propio
+  // pueda inicializar el combo de una fila recién agregada.
+  window.ScComboWidget = { inicializar: inicializarCombo };
 })();
