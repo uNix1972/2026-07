@@ -210,6 +210,10 @@ Important permission rule:
   below the patient selector.
 - The staff appointment list is ordered by `fecha_hora` descending, with the
   newest or furthest-future appointment first.
+- The appointment list uses the same autocomplete and server-side pagination
+  pattern as the doctor list: exact suggestion selection or accent-insensitive
+  free text, optional status filtering, five results per page, and pagination
+  links that retain every active filter.
 - The appointment is submitted through a final confirmation dialog asking
   `¿Está seguro que los datos son correctos?`. Immediate WhatsApp notification
   is opt-in inside that dialog; its checkbox is no longer displayed directly

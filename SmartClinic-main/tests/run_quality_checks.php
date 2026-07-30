@@ -531,7 +531,11 @@ check(strpos($citasController, "case 'notify':") !== false, 'citas expone notifi
 check(strpos($citasController, "\$_POST['notify_patient']") !== false, 'alta de cita respeta notificación inmediata opcional');
 check(strpos($citasController, "strtotime(\$b['fecha_hora'] ?? '') <=> strtotime(\$a['fecha_hora'] ?? '')") !== false, 'lista de citas ordenada por fecha y hora descendente');
 check(strpos($citasController, 'buildAvailabilityConflictMessage') !== false, 'citas explica si el conflicto es del médico o paciente');
-check(strpos($citaCreate, 'data-telefono="{{telefono}}"') !== false, 'alta muestra teléfono del paciente seleccionado');
+check(
+    strpos($citaCreate, 'data-telefono-inicial=') !== false
+        && strpos($citasController, "'telefono' =>") !== false,
+    'alta muestra teléfono del paciente seleccionado'
+);
 check(strpos($citaCreate, '&paciente_id=') !== false, 'alta recarga horarios con el paciente seleccionado');
 check(strpos($citaEdit, '&paciente_id=') !== false, 'edición recarga horarios con el paciente seleccionado');
 check(strpos($citaCreate, 'name="notify_patient"') !== false, 'alta pregunta por notificación inmediata');
@@ -541,6 +545,32 @@ check(strpos($citaCreate, 'name="notify_patient" value="1"') === false, 'opción
 
 $citasView = file_get_contents(__DIR__ . '/../src/Views/templates/citas.view.tpl');
 check(strpos($citasView, 'action=notify') !== false, 'lista de citas permite notificar al paciente');
+check(
+    strpos($citasController, 'paginateAppointments') !== false
+        && strpos($citasController, "5,\n            'pagina'") !== false
+        && strpos($citasController, "'totalCitas'") !== false,
+    'lista de citas pagina cinco resultados después de filtrar'
+);
+check(
+    strpos($citasController, "'citasJsonAttr'") !== false
+        && strpos($citasController, 'normalizeAppointmentSearch') !== false
+        && strpos($citasController, "'cita_id'") !== false,
+    'buscador de citas ofrece selección exacta y texto sin acentos'
+);
+check(
+    strpos($citasView, 'data-sc-combo-submit-on-enter') !== false
+        && strpos($citasView, 'name="search"') !== false
+        && strpos($citasView, 'name="estado"') !== false
+        && strpos($citasView, 'name="cita_id"') !== false,
+    'barra de citas envía búsqueda, estado y cita seleccionada'
+);
+check(
+    strpos($citasView, '{{paginaActual}}') !== false
+        && strpos($citasView, '{{urlPaginaAnterior}}') !== false
+        && strpos($citasView, '{{urlPaginaSiguiente}}') !== false
+        && strpos($citasView, 'data-cita-row') === false,
+    'vista de citas usa paginación del servidor en vez de ocultar filas'
+);
 check(strpos($pacientePortal, 'id="portal_paciente_id"') !== false, 'portal del paciente consulta disponibilidad propia');
 check(strpos($pacientePortal, '<select id="hora"') !== false, 'portal del paciente muestra solo horas disponibles');
 

@@ -11,6 +11,7 @@ use Utilities\Security;
 use Utilities\Site;
 use Utilities\AuditLogger;
 use Utilities\MessageNotifier;
+use Utilities\Validators;
 use Views\Renderer;
 
 class CitasController extends PublicController
@@ -72,9 +73,19 @@ class CitasController extends PublicController
         $isAdmin = $userId === 1 || Security::isInRol($userId, 1);
         $showCrudActions = $canManageCitas || $isAdmin;
 
-        $search = trim(strval($_GET['search'] ?? ''));
-        $estadoFilter = trim(strval($_GET['estado'] ?? ''));
+        $citaBuscadaId = Validators::sanitizeId(
+            $_GET['cita_id'] ?? ''
+        );
+        $search = Validators::sanitizeString(
+            $_GET['search'] ?? '',
+            150
+        );
+        $estadoFilter = Validators::sanitizeString(
+            $_GET['estado'] ?? '',
+            50
+        );
         $citas = DaoCitas::getAllCitas();
+
         foreach ($citas as &$cita) {
             $cita['canNotify'] = $this->canNotifyAppointment($cita);
             $cita['cannotNotify'] = !$cita['canNotify'];
@@ -85,36 +96,119 @@ class CitasController extends PublicController
         }
         unset($cita);
 
-        if ($search !== '' || $estadoFilter !== '') {
-            $searchLower = strtolower($search);
-            $estadoLower = strtolower($estadoFilter);
-            $citas = array_filter($citas, function ($item) use ($searchLower, $estadoLower) {
-                $matchSearch = $searchLower === ''
-                    || strpos(strtolower($item['paciente_nombres'] ?? ''), $searchLower) !== false
-                    || strpos(strtolower($item['paciente_apellidos'] ?? ''), $searchLower) !== false
-                    || strpos(strtolower($item['medico_nombres'] ?? ''), $searchLower) !== false
-                    || strpos(strtolower($item['medico_apellidos'] ?? ''), $searchLower) !== false
-                    || strpos(strtolower($item['nombre_especialidad'] ?? ''), $searchLower) !== false
-                    || strpos(strtolower($item['centro_nombre'] ?? ''), $searchLower) !== false
-                    || strpos(strtolower($item['consultorio'] ?? ''), $searchLower) !== false
-                    || strpos(strtolower($item['fecha_hora'] ?? ''), $searchLower) !== false;
-                $matchEstado = $estadoLower === ''
-                    || strpos(strtolower($item['nombre_estado'] ?? ''), $estadoLower) !== false;
+        // Las sugerencias se construyen antes de filtrar para que el
+        // autocompletado siempre pueda encontrar cualquier cita registrada.
+        $citasParaBuscador = array_map(
+            function (array $item): array {
+                return [
+                    'id' => (string) ($item['id'] ?? ''),
+                    'nombre' => $this->buildAppointmentSearchLabel(
+                        $item
+                    ),
+                    'extra' => $this->buildAppointmentSearchText(
+                        $item
+                    )
+                ];
+            },
+            $citas
+        );
+        $this->viewData['citasJsonAttr'] = htmlspecialchars(
+            json_encode(
+                $citasParaBuscador,
+                JSON_UNESCAPED_UNICODE
+            ),
+            ENT_QUOTES,
+            'UTF-8'
+        );
 
-                return $matchSearch && $matchEstado;
-            });
+        $searchDisplayValue = $search;
+        if ($citaBuscadaId !== null) {
+            $selectedOption = null;
+            foreach ($citasParaBuscador as $option) {
+                if ((int) $option['id'] === $citaBuscadaId) {
+                    $selectedOption = $option;
+                    break;
+                }
+            }
+            $searchDisplayValue = $selectedOption['nombre']
+                ?? $search;
+
+            $citas = array_values(array_filter(
+                $citas,
+                static function (array $item) use (
+                    $citaBuscadaId
+                ): bool {
+                    return (int) ($item['id'] ?? 0)
+                        === $citaBuscadaId;
+                }
+            ));
+        } elseif ($search !== '') {
+            $normalizedSearch = $this->normalizeAppointmentSearch(
+                $search
+            );
+            $citas = array_values(array_filter(
+                $citas,
+                function (array $item) use (
+                    $normalizedSearch
+                ): bool {
+                    return strpos(
+                        $this->normalizeAppointmentSearch(
+                            $this->buildAppointmentSearchText($item)
+                        ),
+                        $normalizedSearch
+                    ) !== false;
+                }
+            ));
         }
 
-        // Ordenar la lista por fecha y hora descendente (más recientes primero).
-        usort($citas, function ($a, $b) {
-            return strtotime($b['fecha_hora'] ?? '') <=> strtotime($a['fecha_hora'] ?? '');
-        });
+        if ($estadoFilter !== '') {
+            $normalizedStatus = $this->normalizeAppointmentSearch(
+                $estadoFilter
+            );
+            $citas = array_values(array_filter(
+                $citas,
+                function (array $item) use (
+                    $normalizedStatus
+                ): bool {
+                    return $this->normalizeAppointmentSearch(
+                        strval($item['nombre_estado'] ?? '')
+                    ) === $normalizedStatus;
+                }
+            ));
+        }
 
-        $this->viewData['citas'] = array_values($citas);
+        // La paginación se aplica al resultado ya filtrado y ordenado.
+        usort(
+            $citas,
+            static function (array $a, array $b): int {
+                return strtotime($b['fecha_hora'] ?? '') <=> strtotime($a['fecha_hora'] ?? '');
+            }
+        );
+        $citas = array_values($citas);
+        $pagination = $this->paginateAppointments(
+            $citas,
+            5,
+            'pagina'
+        );
+
+        $this->viewData['citas'] = $pagination['items'];
+        $this->viewData['paginaActual'] =
+            $pagination['paginaActual'];
+        $this->viewData['totalPaginas'] =
+            $pagination['totalPaginas'];
+        $this->viewData['totalCitas'] = count($citas);
         $this->viewData['canManageCitas'] = $canManageCitas;
         $this->viewData['showCrudActions'] = $showCrudActions;
-        $this->viewData['searchValue'] = $search;
+        $this->viewData['searchValue'] = $searchDisplayValue;
+        $this->viewData['citaBuscadaIdValue'] =
+            $citaBuscadaId !== null
+                ? (string) $citaBuscadaId
+                : '';
         $this->viewData['estadoFilter'] = $estadoFilter;
+        $this->viewData['hayFiltros'] =
+            $citaBuscadaId !== null
+            || $search !== ''
+            || $estadoFilter !== '';
         $notificationStatus = trim(strval($_GET['notification'] ?? ''));
         $this->viewData['notificationSent'] = $notificationStatus === 'sent';
         $this->viewData['notificationFailed'] = $notificationStatus === 'failed';
@@ -132,6 +226,34 @@ class CitasController extends PublicController
         }
         $this->viewData['estadoOptions'] = $estadoOptions;
 
+        $paginationUrl =
+            'index.php?page=CitasController&action=index';
+        if ($citaBuscadaId !== null) {
+            $paginationUrl .= '&cita_id=' . $citaBuscadaId;
+        } elseif ($search !== '') {
+            $paginationUrl .= '&search=' . urlencode($search);
+        }
+        if ($estadoFilter !== '') {
+            $paginationUrl .=
+                '&estado=' . urlencode($estadoFilter);
+        }
+        $this->viewData['urlPaginaAnterior'] =
+            $pagination['paginaActual'] > 1
+                ? $paginationUrl
+                    . '&pagina='
+                    . ($pagination['paginaActual'] - 1)
+                : '';
+        $this->viewData['urlPaginaSiguiente'] =
+            $pagination['paginaActual']
+                < $pagination['totalPaginas']
+                ? $paginationUrl
+                    . '&pagina='
+                    . ($pagination['paginaActual'] + 1)
+                : '';
+
+        Site::addEndScript(
+            'public/js/kardex-autocomplete.js'
+        );
         Renderer::render('citas', $this->viewData);
     }
 
@@ -1240,5 +1362,100 @@ class CitasController extends PublicController
             }
         }
         return $fecha;
+    }
+
+    /**
+     * Builds the visible autocomplete label for one appointment.
+     */
+    private function buildAppointmentSearchLabel(array $appointment): string
+    {
+        $patient = trim(
+            strval($appointment['paciente_nombres'] ?? '')
+            . ' '
+            . strval($appointment['paciente_apellidos'] ?? '')
+        );
+        if ($patient === '') {
+            $patient = 'Paciente sin nombre';
+        }
+
+        return 'Cita #'
+            . (int) ($appointment['id'] ?? 0)
+            . ' · '
+            . $patient;
+    }
+
+    /**
+     * Combines every field supported by the appointment search bar.
+     */
+    private function buildAppointmentSearchText(array $appointment): string
+    {
+        return implode(' ', [
+            $this->buildAppointmentSearchLabel($appointment),
+            strval($appointment['paciente_nombres'] ?? ''),
+            strval($appointment['paciente_apellidos'] ?? ''),
+            strval($appointment['medico_nombres'] ?? ''),
+            strval($appointment['medico_apellidos'] ?? ''),
+            strval($appointment['nombre_especialidad'] ?? ''),
+            strval($appointment['centro_codigo'] ?? ''),
+            strval($appointment['centro_nombre'] ?? ''),
+            strval($appointment['centro_tipo'] ?? ''),
+            strval($appointment['centro_ciudad'] ?? ''),
+            strval($appointment['consultorio'] ?? ''),
+            strval($appointment['fecha_hora'] ?? ''),
+            strval($appointment['nombre_estado'] ?? '')
+        ]);
+    }
+
+    /**
+     * Makes appointment searches case-insensitive and accent-insensitive.
+     */
+    private function normalizeAppointmentSearch(string $text): string
+    {
+        $withoutAccents = strtr(trim($text), [
+            'Á' => 'A',
+            'É' => 'E',
+            'Í' => 'I',
+            'Ó' => 'O',
+            'Ú' => 'U',
+            'Ü' => 'U',
+            'Ñ' => 'N',
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n'
+        ]);
+
+        return function_exists('mb_strtolower')
+            ? mb_strtolower($withoutAccents, 'UTF-8')
+            : strtolower($withoutAccents);
+    }
+
+    /**
+     * Applies the same five-row, post-filter pagination used by Médicos.
+     */
+    private function paginateAppointments(
+        array $items,
+        int $perPage,
+        string $parameterName
+    ): array {
+        $totalPages = max(
+            1,
+            (int) ceil(count($items) / $perPage)
+        );
+        $currentPage = Validators::sanitizeInt(
+            $_GET[$parameterName] ?? 1,
+            1,
+            $totalPages
+        ) ?? 1;
+        $offset = ($currentPage - 1) * $perPage;
+
+        return [
+            'items' => array_slice($items, $offset, $perPage),
+            'paginaActual' => $currentPage,
+            'totalPaginas' => $totalPages
+        ];
     }
 }
