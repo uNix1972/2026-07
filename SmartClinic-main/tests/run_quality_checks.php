@@ -600,8 +600,25 @@ check(
 );
 
 $privateLayout = file_get_contents(__DIR__ . '/../src/Views/templates/privatelayout.view.tpl');
+$privateNavigation = file_get_contents(__DIR__ . '/../public/js/private-navigation.js');
 check(strpos($privateLayout, 'skip-link') !== false, 'mejora de accesibilidad skip-link presente');
 check(strpos($privateLayout, 'smartclinic-confirm.js') !== false, 'layout carga confirmaciones globales');
+check(
+    strpos($privateLayout, 'sidebar-scroll') !== false
+        && strpos($privateLayout, 'sidebar-footer') !== false,
+    'menu privado mantiene opciones desplazables y cierre de sesion visible'
+);
+check(
+    strpos($privateLayout, 'menu-backdrop') !== false
+        && strpos($privateLayout, 'private-navigation.js') !== false,
+    'menu privado carga fondo interactivo y comportamiento responsivo'
+);
+check(
+    strpos($privateNavigation, "aria-current") !== false
+        && strpos($privateNavigation, "event.key !== 'Escape'") !== false
+        && strpos($privateNavigation, 'scrollIntoView') !== false,
+    'menu privado identifica la pagina activa y permite cerrar con Escape'
+);
 
 
 echo PHP_EOL . "Validaciones rápidas finalizadas correctamente." . PHP_EOL;

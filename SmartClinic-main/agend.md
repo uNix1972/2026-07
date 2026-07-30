@@ -303,6 +303,13 @@ Important permission rule:
   from `SCRIPT_NAME`. Assets therefore work both under the shared-Apache
   subfolder above and at `/` in the project's standalone Docker setup.
 - The project is PHP MVC with vanilla JavaScript; it does not use React.
+- The authenticated navigation uses a fixed header and a slide-out drawer. Its
+  menu body scrolls independently so every authorized option remains reachable
+  on short screens, while the logout action stays fixed at the bottom.
+- `public/js/private-navigation.js` marks the current controller link with
+  `aria-current`, synchronizes the drawer's expanded state, and supports closing
+  the menu with Escape. Menu permissions and ordering still come exclusively
+  from `nav.config.json` and `Utilities\Nav`.
 - Xdebug connection warnings do not prevent PHP execution.
 - `parameters.env` contains deployment defaults. Actual hosting-environment
   variables take precedence over those committed values.
