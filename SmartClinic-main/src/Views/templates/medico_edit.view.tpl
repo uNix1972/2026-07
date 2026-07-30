@@ -52,13 +52,14 @@
 
       {{if puedeGuardar}}
       <fieldset style="margin:28px 0 0;padding:0;border:0;">
-        <legend style="margin-bottom:14px;color:#111827;font-size:1.15rem;font-weight:700;">
-          Centros de salud y consultorios
-        </legend>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+          <span style="color:#111827;font-size:1.15rem;font-weight:700;">Centros de salud y consultorios</span>
+          <input type="text" id="centro_search_filter" autocomplete="off" placeholder="Buscar centro de salud..." style="max-width:280px;width:100%;padding:8px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:.9rem;box-sizing:border-box;">
+        </div>
 
         <div style="border:1px solid #D1D5DB;border-radius:8px;overflow:hidden;">
           {{foreach centros}}
-          <div data-centro-assignment style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;align-items:center;padding:16px;border-bottom:1px solid #E5E7EB;">
+          <div data-centro-assignment data-centro-search="{{nombre}} {{codigo}} {{ciudad}}" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;align-items:center;padding:16px;border-bottom:1px solid #E5E7EB;">
             <label style="display:flex;align-items:flex-start;gap:10px;color:#111827;font-weight:600;">
               <input data-centro-checkbox type="checkbox" name="centro_ids[]" value="{{id}}" {{if selected}}checked{{endif selected}}>
               <span>{{nombre}}<br><small style="color:#64748B;font-weight:400;">{{codigo}} · {{ciudad}}</small></span>
@@ -70,6 +71,7 @@
           </div>
           {{endfor centros}}
         </div>
+        <p data-centro-search-empty style="display:none;color:#64748b;padding:14px;margin:0;">No se encontraron centros con ese nombre.</p>
       </fieldset>
       {{endif puedeGuardar}}
 
@@ -99,4 +101,40 @@ document.querySelectorAll("[data-centro-assignment]").forEach(function (row) {
   checkbox.addEventListener("change", syncConsultorio);
   syncConsultorio();
 });
+
+(function () {
+  var searchInput = document.getElementById("centro_search_filter");
+  var filas = document.querySelectorAll("[data-centro-assignment]");
+  var vacio = document.querySelector("[data-centro-search-empty]");
+  if (!searchInput || !filas.length) {
+    return;
+  }
+
+  function normalizar(texto) {
+    return (texto || "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  searchInput.addEventListener("input", function () {
+    var query = normalizar(searchInput.value);
+    var visibles = 0;
+
+    filas.forEach(function (fila) {
+      var texto = normalizar(fila.getAttribute("data-centro-search"));
+      var coincide = query === "" || texto.indexOf(query) !== -1;
+      fila.style.display = coincide ? "" : "none";
+      if (coincide) {
+        visibles += 1;
+      }
+    });
+
+    if (vacio) {
+      vacio.style.display = visibles === 0 ? "block" : "none";
+    }
+  });
+})();
 </script>

@@ -74,7 +74,19 @@
                     <td style="padding:14px; vertical-align:middle;">{{apellidos}}</td>
                     <td style="padding:14px; vertical-align:middle;">{{num_colegiatura}}</td>
                     <td style="padding:14px; vertical-align:middle;">{{telefono}}</td>
-                    <td style="padding:14px;vertical-align:middle;min-width:220px;">{{centros_salud_texto}}</td>
+                    <td style="padding:14px;vertical-align:middle;min-width:220px;">
+                        {{if tieneCentros}}
+                        <div style="display:flex; flex-direction:column; gap:6px;">
+                            {{foreach centros_lista}}
+                            <div style="background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:6px 10px;">
+                                <div style="font-weight:600; color:#0f172a; font-size:.88rem; line-height:1.3;">{{centro_nombre}}</div>
+                                <div style="color:#64748b; font-size:.78rem;">Consultorio {{consultorio}}</div>
+                            </div>
+                            {{endfor centros_lista}}
+                        </div>
+                        {{endif tieneCentros}}
+                        {{ifnot tieneCentros}}<span style="color:#94a3b8;">Sin centro asignado</span>{{endifnot tieneCentros}}
+                    </td>
 
                     <td style="padding:14px; vertical-align:middle;">
 

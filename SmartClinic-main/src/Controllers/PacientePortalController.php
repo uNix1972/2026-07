@@ -62,6 +62,14 @@ class PacientePortalController extends PrivateController
             $centrosPaciente
         );
         $citas = $this->filtrarCitasPorCentro($citasTodas, $centroFiltro);
+        // "Pagar demo" solo tiene sentido mientras la cita sigue Pendiente
+        // (estado_id 1); una vez pagada pasa a Confirmada y el botón debe
+        // desaparecer, si no el paciente puede pensar que el pago nunca
+        // se registró aunque sí haya funcionado.
+        foreach ($citas as &$citaItem) {
+            $citaItem['puedePagar'] = intval($citaItem['estado_id'] ?? 0) === 1;
+        }
+        unset($citaItem);
 
         $centrosFiltro = [[
             'id' => 'todos',

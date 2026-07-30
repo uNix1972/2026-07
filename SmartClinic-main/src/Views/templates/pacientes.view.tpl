@@ -12,18 +12,21 @@
         {{endif showCrudActions}}
     </div>
 
+    {{if msg}}
+    <div role="status" style="margin-bottom:16px;padding:14px 16px;border:1px solid #A7F3D0;border-radius:10px;background:#ECFDF5;color:#065F46;">
+        {{msg}}
+    </div>
+    {{endif msg}}
+
     <div class="list-toolbar">
-        <form method="GET" action="index.php" class="toolbar-form">
-            <input type="hidden" name="page" value="PacientesController" />
-            <input type="hidden" name="action" value="index" />
+        <div class="toolbar-form">
             <div class="toolbar-row">
                 <div class="toolbar-field">
-                    <label>Buscar</label>
-                    <input type="search" name="search" value="{{searchValue}}" placeholder="Buscar paciente, identidad o teléfono" />
+                    <label for="pacientes_search_filter">Buscar</label>
+                    <input type="text" id="pacientes_search_filter" autocomplete="off" placeholder="Buscar paciente, identidad o teléfono" />
                 </div>
-                <button type="submit" class="btn btn--primary toolbar-submit">Buscar</button>
             </div>
-        </form>
+        </div>
     </div>
 
     <div style="
@@ -53,7 +56,7 @@
 
                 {{foreach pacientes}}
 
-                <tr style="border-bottom:1px solid #E5E7EB;">
+                <tr data-paciente-row data-paciente-search="{{identidad}} {{nombres}} {{apellidos}} {{telefono}} {{direccion}}" style="border-bottom:1px solid #E5E7EB;">
                     <td style="padding:14px; vertical-align:middle;">{{id}}</td>
                     <td style="padding:14px; vertical-align:middle;">{{identidad}}</td>
                     <td style="padding:14px; vertical-align:middle;">{{nombres}}</td>
@@ -85,6 +88,10 @@
 
                 {{endfor pacientes}}
 
+                <tr data-pacientes-search-empty style="display:none;">
+                    <td colspan="8" style="padding:20px; text-align:center; color:#64748b;">No se encontraron pacientes con esa búsqueda.</td>
+                </tr>
+
             </tbody>
 
         </table>
@@ -93,3 +100,41 @@
     </div>
 
 </div>
+
+<script>
+(function () {
+  var searchInput = document.getElementById("pacientes_search_filter");
+  var filas = document.querySelectorAll("[data-paciente-row]");
+  var vacio = document.querySelector("[data-pacientes-search-empty]");
+  if (!searchInput || !filas.length) {
+    return;
+  }
+
+  function normalizar(texto) {
+    return (texto || "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  searchInput.addEventListener("input", function () {
+    var query = normalizar(searchInput.value);
+    var visibles = 0;
+
+    filas.forEach(function (fila) {
+      var texto = normalizar(fila.getAttribute("data-paciente-search"));
+      var coincide = query === "" || texto.indexOf(query) !== -1;
+      fila.style.display = coincide ? "" : "none";
+      if (coincide) {
+        visibles += 1;
+      }
+    });
+
+    if (vacio) {
+      vacio.style.display = visibles === 0 ? "" : "none";
+    }
+  });
+})();
+</script>

@@ -44,9 +44,27 @@ class MedicosController extends PublicController
         $medicos = DaoMedicos::getAllMedicos();
 
         foreach ($medicos as &$medico) {
-            $medico["centros_salud_texto"] = $medico["centros_salud"] !== ""
-                ? $medico["centros_salud"]
+            $centrosTexto = (string) ($medico["centros_salud"] ?? "");
+            $medico["centros_salud_texto"] = $centrosTexto !== ""
+                ? $centrosTexto
                 : "Sin centro asignado";
+
+            // La columna "Centros / Consultorios" viene de un GROUP_CONCAT
+            // ("Centro - Consultorio X, Centro - Consultorio Y") pensado
+            // para búsqueda de texto, no para mostrarlo tal cual cuando un
+            // médico tiene varios centros asignados. Se separa en una
+            // lista para poder pintar cada centro en su propia fila/chip.
+            $medico["centros_lista"] = [];
+            if ($centrosTexto !== "") {
+                foreach (explode(", ", $centrosTexto) as $item) {
+                    $partes = explode(" - Consultorio ", $item, 2);
+                    $medico["centros_lista"][] = [
+                        "centro_nombre" => $partes[0] ?? $item,
+                        "consultorio" => $partes[1] ?? "",
+                    ];
+                }
+            }
+            $medico["tieneCentros"] = count($medico["centros_lista"]) > 0;
         }
         unset($medico);
 

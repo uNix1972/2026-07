@@ -20,6 +20,27 @@ class Pacientes extends Table
         return parent::obtenerUnRegistro($sql, $params);
     }
 
+    /**
+     * Comprueba si la identidad ya pertenece a otro paciente (la columna
+     * es UNIQUE en la base de datos, pero sin este chequeo el usuario solo
+     * vería un error genérico de base de datos en vez de un mensaje claro).
+     */
+    public static function existsIdentidad(string $identidad, int $excludeId = 0): bool
+    {
+        $sql = "SELECT COUNT(*) AS total
+                FROM paciente
+                WHERE identidad = :identidad";
+        $params = ["identidad" => $identidad];
+
+        if ($excludeId > 0) {
+            $sql .= " AND id != :exclude_id";
+            $params["exclude_id"] = $excludeId;
+        }
+
+        $row = parent::obtenerUnRegistro($sql, $params);
+        return (int) ($row["total"] ?? 0) > 0;
+    }
+
     public static function insertPaciente(
         string $identidad,
         string $nombres,

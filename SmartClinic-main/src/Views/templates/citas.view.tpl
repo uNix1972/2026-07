@@ -31,25 +31,22 @@
     {{endif notificationUnavailable}}
 
     <div class="list-toolbar">
-        <form method="GET" action="index.php" class="toolbar-form">
-            <input type="hidden" name="page" value="CitasController" />
-            <input type="hidden" name="action" value="index" />
+        <div class="toolbar-form">
             <div class="toolbar-row">
                 <div class="toolbar-field">
-                    <label>Buscar</label>
-                    <input type="search" name="search" value="{{searchValue}}" placeholder="Buscar por paciente, médico, centro, consultorio o fecha" />
+                    <label for="citas_search_filter">Buscar</label>
+                    <input type="text" id="citas_search_filter" autocomplete="off" placeholder="Buscar por paciente, médico, centro, consultorio o fecha" />
                 </div>
                 <div class="toolbar-field">
-                    <label>Estado</label>
-                    <select name="estado">
+                    <label for="citas_estado_filter">Estado</label>
+                    <select id="citas_estado_filter">
                         {{foreach estadoOptions}}
-                        <option value="{{value}}" {{if selected}}selected{{endif selected}}>{{label}}</option>
+                        <option value="{{value}}">{{label}}</option>
                         {{endfor estadoOptions}}
                     </select>
                 </div>
-                <button type="submit" class="btn btn--primary toolbar-submit">Buscar</button>
             </div>
-        </form>
+        </div>
     </div>
 
     {{if citas}}
@@ -70,7 +67,7 @@
             </thead>
             <tbody>
                 {{foreach citas}}
-                <tr style="border-bottom:1px solid #E5E7EB;">
+                <tr data-cita-row data-cita-estado="{{nombre_estado}}" data-cita-search="{{paciente_nombres}} {{paciente_apellidos}} {{medico_nombres}} {{medico_apellidos}} {{nombre_especialidad}} {{centro_nombre}} {{consultorio}} {{fecha_hora}}" style="border-bottom:1px solid #E5E7EB;">
                     <td style="padding:14px; vertical-align:middle;">{{id}}</td>
                     <td style="padding:14px; vertical-align:middle;">{{paciente_nombres}} {{paciente_apellidos}}<br><small>{{paciente_telefono_texto}}</small></td>
                     <td style="padding:14px; vertical-align:middle;">{{medico_nombres}} {{medico_apellidos}}</td>
@@ -110,6 +107,9 @@
                     </td>
                 </tr>
                 {{endfor citas}}
+                <tr data-citas-search-empty style="display:none;">
+                    <td colspan="8" style="padding:20px; text-align:center; color:#64748b;">No se encontraron citas con esa búsqueda.</td>
+                </tr>
             </tbody>
         </table>
         </div>
@@ -123,3 +123,49 @@
     {{endifnot citas}}
 
 </div>
+
+<script>
+(function () {
+  var searchInput = document.getElementById("citas_search_filter");
+  var estadoSelect = document.getElementById("citas_estado_filter");
+  var filas = document.querySelectorAll("[data-cita-row]");
+  var vacio = document.querySelector("[data-citas-search-empty]");
+  if ((!searchInput && !estadoSelect) || !filas.length) {
+    return;
+  }
+
+  function normalizar(texto) {
+    return (texto || "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  function aplicarFiltro() {
+    var query = normalizar(searchInput ? searchInput.value : "");
+    var estado = normalizar(estadoSelect ? estadoSelect.value : "");
+    var visibles = 0;
+
+    filas.forEach(function (fila) {
+      var texto = normalizar(fila.getAttribute("data-cita-search"));
+      var estadoFila = normalizar(fila.getAttribute("data-cita-estado"));
+      var coincideTexto = query === "" || texto.indexOf(query) !== -1;
+      var coincideEstado = estado === "" || estadoFila === estado;
+      var coincide = coincideTexto && coincideEstado;
+      fila.style.display = coincide ? "" : "none";
+      if (coincide) {
+        visibles += 1;
+      }
+    });
+
+    if (vacio) {
+      vacio.style.display = visibles === 0 ? "" : "none";
+    }
+  }
+
+  searchInput && searchInput.addEventListener("input", aplicarFiltro);
+  estadoSelect && estadoSelect.addEventListener("change", aplicarFiltro);
+})();
+</script>

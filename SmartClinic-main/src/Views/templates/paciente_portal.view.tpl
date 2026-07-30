@@ -21,8 +21,7 @@
     </div>
   </section>
 
-  <div class="sc-two-columns">
-    <section class="sc-panel-card">
+  <section class="sc-panel-card" style="margin-bottom:22px;">
       <h3>Agendar cita en línea</h3>
       <form method="POST" action="index.php?page=PacientePortalController&action=agendar">
         <input type="hidden" name="csrf_token" value="{{csrf_token}}">
@@ -52,11 +51,10 @@
       </div>
       {{endif mostrarFiltroCentros}}
       {{if citas}}
-      <div class="table-responsive"><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#F1F5F9;"><th style="padding:12px;">ID</th><th style="padding:12px;">Fecha</th><th style="padding:12px;">Médico</th><th style="padding:12px;">Centro / Consultorio</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Pago</th></tr></thead><tbody>{{foreach citas}}<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:12px;">{{id}}</td><td style="padding:12px;">{{fecha_hora}}</td><td style="padding:12px;">{{medico_nombres}} {{medico_apellidos}}</td><td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td><td style="padding:12px;">{{nombre_estado}}</td><td style="padding:12px;"><form method="POST" action="index.php?page=PacientePortalController&action=pagar"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><input type="hidden" name="total" value="750.00"><button class="btn btn--outline" type="submit">Pagar demo</button></form></td></tr>{{endfor citas}}</tbody></table></div>
+      <div class="table-responsive"><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#F1F5F9;"><th style="padding:12px;">ID</th><th style="padding:12px;">Fecha</th><th style="padding:12px;">Médico</th><th style="padding:12px;">Centro / Consultorio</th><th style="padding:12px;">Estado</th><th style="padding:12px;">Pago</th></tr></thead><tbody>{{foreach citas}}<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:12px;">{{id}}</td><td style="padding:12px;">{{fecha_hora}}</td><td style="padding:12px;">{{medico_nombres}} {{medico_apellidos}}</td><td style="padding:12px;">{{centro_nombre}}<br><small>Consultorio {{consultorio}}</small></td><td style="padding:12px;">{{nombre_estado}}</td><td style="padding:12px;">{{if puedePagar}}<form method="POST" action="index.php?page=PacientePortalController&action=pagar"><input type="hidden" name="csrf_token" value="{{~csrf_token}}"><input type="hidden" name="cita_id" value="{{id}}"><input type="hidden" name="total" value="750.00"><button class="btn btn--outline" type="submit">Pagar demo</button></form>{{endif puedePagar}}{{ifnot puedePagar}}<span style="color:#94a3b8;">—</span>{{endifnot puedePagar}}</td></tr>{{endfor citas}}</tbody></table></div>
       {{endif citas}}
       {{ifnot citas}}<p style="color:#64748b;">Aún no tiene citas registradas.</p>{{endifnot citas}}
-    </section>
-  </div>
+  </section>
 
   <div class="sc-two-columns" style="margin-top:22px;">
     <section class="sc-panel-card"><h3>Historial médico</h3>{{if historial}}<div class="table-responsive"><table style="width:100%; border-collapse:collapse;"><tbody>{{foreach historial}}<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:12px;"><strong>{{fecha_hora}}</strong><br>{{diagnostico}}<br><span style="color:#64748b;">{{tratamiento}}</span></td></tr>{{endfor historial}}</tbody></table></div>{{endif historial}}{{ifnot historial}}<p style="color:#64748b;">Sin historial clínico registrado.</p>{{endifnot historial}}</section>

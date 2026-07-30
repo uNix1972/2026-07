@@ -61,49 +61,152 @@ class PacientesController extends PublicController
         $this->viewData["pacientes"] = array_values($pacientes);
         $this->viewData["showCrudActions"] = $showCrudActions;
         $this->viewData["searchValue"] = $search;
+        $this->viewData["msg"] = \Utilities\Validators::sanitizeString($_GET["msg"] ?? "");
         Renderer::render("pacientes", $this->viewData);
     }
 
     private function create(): void
     {
         $this->authorizeCrud();
+        $data = $this->emptyPatientData();
 
         if ($_SERVER["REQUEST_METHOD"] === "POST") {
+            $data = $this->readPatientData();
+
             if (!Security::validateCsrfPost()) {
-                Renderer::render("paciente_create", [
-                    "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
-                ]);
+                $this->renderCreate(
+                    $data,
+                    "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
+                );
                 return;
             }
 
-            $identidad = \Utilities\Validators::sanitizeAlphaNum($_POST["identidad"] ?? "");
-            $nombres = \Utilities\Validators::sanitizeString($_POST["nombres"] ?? "");
-            $apellidos = \Utilities\Validators::sanitizeString($_POST["apellidos"] ?? "");
-            $fechaNacimiento = \Utilities\Validators::sanitizeDate($_POST["fecha_nacimiento"] ?? "");
-            $telefono = \Utilities\Validators::sanitizeString($_POST["telefono"] ?? "");
-            $direccion = \Utilities\Validators::sanitizeString($_POST["direccion"] ?? "");
-
-            if ($identidad === "" || $nombres === "" || $apellidos === "" || $fechaNacimiento === null) {
-                $this->viewData["error"] = "Todos los campos obligatorios deben ser válidos.";
-                Renderer::render("paciente_create", $this->viewData);
+            $error = $this->validatePatientData($data);
+            if ($error !== null) {
+                $this->renderCreate($data, $error);
                 return;
             }
 
-            $newId = DaoPacientes::insertPaciente(
-                $identidad,
-                $nombres,
-                $apellidos,
-                $fechaNacimiento,
-                $telefono,
-                $direccion
-            );
-            AuditLogger::log('crear', 'Pacientes', 'Paciente creado: ' . $nombres . ' ' . $apellidos, ['paciente_id' => $newId]);
+            try {
+                $newId = DaoPacientes::insertPaciente(
+                    $data["identidad"],
+                    $data["nombres"],
+                    $data["apellidos"],
+                    $data["fecha_nacimiento"],
+                    $data["telefono"],
+                    $data["direccion"]
+                );
+                AuditLogger::log(
+                    'crear',
+                    'Pacientes',
+                    'Paciente creado: ' . $data["nombres"] . ' ' . $data["apellidos"],
+                    ['paciente_id' => $newId]
+                );
+            } catch (\Throwable $e) {
+                error_log("No se pudo crear el paciente: " . $e->getMessage());
+                $this->renderCreate(
+                    $data,
+                    "No fue posible guardar el paciente. Verifique los datos e intente nuevamente."
+                );
+                return;
+            }
 
-            Site::redirectTo("index.php?page=PacientesController&action=index");
+            Site::redirectTo("index.php?page=PacientesController&action=index&msg=" . urlencode('Paciente registrado correctamente.'));
             exit;
         }
 
-        Renderer::render("paciente_create", []);
+        $this->renderCreate($data);
+    }
+
+    /**
+     * Valores por defecto para el formulario de "Registrar paciente" en
+     * su primera carga (GET, sin datos posteados todavía).
+     */
+    private function emptyPatientData(): array
+    {
+        return [
+            "identidad" => "",
+            "nombres" => "",
+            "apellidos" => "",
+            "fecha_nacimiento" => "",
+            "telefono" => "",
+            "direccion" => "",
+        ];
+    }
+
+    /**
+     * Lee y sanitiza los campos del formulario de paciente desde $_POST,
+     * respetando el largo máximo de cada columna en la base de datos.
+     */
+    private function readPatientData(): array
+    {
+        $fechaRaw = trim((string) ($_POST["fecha_nacimiento"] ?? ""));
+        $fechaSanitizada = \Utilities\Validators::sanitizeDate($fechaRaw);
+
+        return [
+            "identidad" => \Utilities\Validators::sanitizeAlphaNum($_POST["identidad"] ?? "", 20),
+            "nombres" => \Utilities\Validators::sanitizeString($_POST["nombres"] ?? "", 100),
+            "apellidos" => \Utilities\Validators::sanitizeString($_POST["apellidos"] ?? "", 100),
+            // Si el formato no es válido se conserva lo que escribió el
+            // usuario (para no perderlo al recargar el formulario); la
+            // validación real ocurre en validatePatientData().
+            "fecha_nacimiento" => $fechaSanitizada ?? $fechaRaw,
+            "telefono" => \Utilities\Validators::sanitizeString($_POST["telefono"] ?? "", 20),
+            "direccion" => \Utilities\Validators::sanitizeString($_POST["direccion"] ?? "", 255),
+        ];
+    }
+
+    /**
+     * Valida los datos de un paciente (creación o edición). $excludeId se
+     * usa al editar, para no rechazar la identidad contra el propio
+     * registro que se está actualizando.
+     */
+    private function validatePatientData(array $data, int $excludeId = 0): ?string
+    {
+        if ($data["identidad"] === "" || strlen($data["identidad"]) < 5) {
+            return "La identidad es obligatoria y debe tener al menos 5 caracteres.";
+        }
+        if ($data["nombres"] === "" || $data["apellidos"] === "") {
+            return "Los nombres y apellidos son obligatorios.";
+        }
+        if ($data["telefono"] === "") {
+            return "El teléfono es obligatorio.";
+        }
+        if (!preg_match('/^[0-9+\-\s()]{7,20}$/', $data["telefono"])) {
+            return "El teléfono no tiene un formato válido.";
+        }
+        if ($data["direccion"] === "") {
+            return "La dirección es obligatoria.";
+        }
+
+        $fechaSanitizada = \Utilities\Validators::sanitizeDate($data["fecha_nacimiento"]);
+        if ($fechaSanitizada === null) {
+            return "La fecha de nacimiento es obligatoria y debe ser una fecha válida.";
+        }
+        $fechaNacimiento = \DateTime::createFromFormat('Y-m-d', $fechaSanitizada);
+        $hoy = new \DateTime('today');
+        if ($fechaNacimiento > $hoy) {
+            return "La fecha de nacimiento no puede ser una fecha futura.";
+        }
+        $fechaMinima = (clone $hoy)->modify('-120 years');
+        if ($fechaNacimiento < $fechaMinima) {
+            return "La fecha de nacimiento no es válida.";
+        }
+
+        if (DaoPacientes::existsIdentidad($data["identidad"], $excludeId)) {
+            return "Ya existe un paciente registrado con esa identidad.";
+        }
+
+        return null;
+    }
+
+    private function renderCreate(array $data, ?string $error = null): void
+    {
+        Renderer::render("paciente_create", array_merge($data, [
+            "error" => $error,
+            "maxFechaNacimiento" => date('Y-m-d'),
+            "minFechaNacimiento" => date('Y-m-d', strtotime('-120 years')),
+        ]));
     }
 
     private function authorizeCrud(): void
@@ -128,51 +231,92 @@ class PacientesController extends PublicController
             exit;
         }
 
-        if ($_SERVER["REQUEST_METHOD"] === "POST") {
-            if (!Security::validateCsrfPost()) {
-                $paciente = DaoPacientes::getPacienteById($id);
-                Renderer::render("paciente_edit", [
-                    "paciente" => $paciente,
-                    "error" => "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
-                ]);
-                return;
-            }
-
-            $identidad = \Utilities\Validators::sanitizeAlphaNum($_POST["identidad"] ?? "");
-            $nombres = \Utilities\Validators::sanitizeString($_POST["nombres"] ?? "");
-            $apellidos = \Utilities\Validators::sanitizeString($_POST["apellidos"] ?? "");
-            $fechaNacimiento = \Utilities\Validators::sanitizeDate($_POST["fecha_nacimiento"] ?? "");
-            $telefono = \Utilities\Validators::sanitizeString($_POST["telefono"] ?? "");
-            $direccion = \Utilities\Validators::sanitizeString($_POST["direccion"] ?? "");
-
-            if ($identidad === "" || $nombres === "" || $apellidos === "" || $fechaNacimiento === null) {
-                $paciente = DaoPacientes::getPacienteById($id);
-                $this->viewData["error"] = "Todos los campos obligatorios deben ser válidos.";
-                Renderer::render("paciente_edit", ["paciente" => $paciente, "error" => "Datos inválidos."]);
-                return;
-            }
-
-            DaoPacientes::updatePaciente(
-                $id,
-                $identidad,
-                $nombres,
-                $apellidos,
-                $fechaNacimiento,
-                $telefono,
-                $direccion
-            );
-            AuditLogger::log('editar', 'Pacientes', 'Paciente actualizado: ' . $nombres . ' ' . $apellidos, ['paciente_id' => $id]);
-
+        $pacienteExistente = DaoPacientes::getPacienteById($id);
+        if (!$pacienteExistente) {
             Site::redirectTo("index.php?page=PacientesController&action=index");
             exit;
         }
 
-        $paciente = DaoPacientes::getPacienteById($id);
+        $data = $this->patientToData($pacienteExistente);
 
-        Renderer::render(
-            "paciente_edit",
-            ["paciente" => $paciente]
-        );
+        if ($_SERVER["REQUEST_METHOD"] === "POST") {
+            $data = $this->readPatientData();
+
+            if (!Security::validateCsrfPost()) {
+                $this->renderEdit(
+                    $id,
+                    $data,
+                    "Solicitud inválida o expirada. Recargue la página e intente nuevamente."
+                );
+                return;
+            }
+
+            $error = $this->validatePatientData($data, $id);
+            if ($error !== null) {
+                $this->renderEdit($id, $data, $error);
+                return;
+            }
+
+            try {
+                DaoPacientes::updatePaciente(
+                    $id,
+                    $data["identidad"],
+                    $data["nombres"],
+                    $data["apellidos"],
+                    $data["fecha_nacimiento"],
+                    $data["telefono"],
+                    $data["direccion"]
+                );
+                AuditLogger::log(
+                    'editar',
+                    'Pacientes',
+                    'Paciente actualizado: ' . $data["nombres"] . ' ' . $data["apellidos"],
+                    ['paciente_id' => $id]
+                );
+            } catch (\Throwable $e) {
+                error_log("No se pudo actualizar el paciente: " . $e->getMessage());
+                $this->renderEdit(
+                    $id,
+                    $data,
+                    "No fue posible actualizar el paciente. Verifique los datos e intente nuevamente."
+                );
+                return;
+            }
+
+            Site::redirectTo("index.php?page=PacientesController&action=index&msg=" . urlencode('Paciente actualizado correctamente.'));
+            exit;
+        }
+
+        $this->renderEdit($id, $data);
+    }
+
+    /**
+     * Convierte la fila cruda de la base de datos al mismo formato
+     * {identidad, nombres, apellidos, fecha_nacimiento, telefono,
+     * direccion} que usa readPatientData(), para que el formulario de
+     * edición se pinte igual tanto en la primera carga como al
+     * recargarse después de un error.
+     */
+    private function patientToData(array $paciente): array
+    {
+        return [
+            "identidad" => (string) ($paciente["identidad"] ?? ""),
+            "nombres" => (string) ($paciente["nombres"] ?? ""),
+            "apellidos" => (string) ($paciente["apellidos"] ?? ""),
+            "fecha_nacimiento" => (string) ($paciente["fecha_nacimiento"] ?? ""),
+            "telefono" => (string) ($paciente["telefono"] ?? ""),
+            "direccion" => (string) ($paciente["direccion"] ?? ""),
+        ];
+    }
+
+    private function renderEdit(int $id, array $data, ?string $error = null): void
+    {
+        Renderer::render("paciente_edit", array_merge($data, [
+            "id" => $id,
+            "error" => $error,
+            "maxFechaNacimiento" => date('Y-m-d'),
+            "minFechaNacimiento" => date('Y-m-d', strtotime('-120 years')),
+        ]));
     }
 
     private function delete(): void
