@@ -61,6 +61,35 @@ class InventarioCentro extends Table
     }
 
     /**
+     * Devuelve todos los saldos como
+     * [producto_id => [centro_salud_id => stock_actual]].
+     *
+     * Se usa en formularios que necesitan validar varias líneas en el
+     * navegador sin ejecutar una consulta por cada producto y centro.
+     */
+    public static function getStockMap(): array
+    {
+        $rows = parent::obtenerRegistros(
+            "SELECT producto_id, centro_salud_id, stock_actual
+             FROM inventario_centro",
+            []
+        );
+
+        $map = [];
+        foreach ($rows as $row) {
+            $productoId = (int) $row["producto_id"];
+            $centroSaludId = (int) $row["centro_salud_id"];
+            if (!isset($map[$productoId])) {
+                $map[$productoId] = [];
+            }
+            $map[$productoId][$centroSaludId] =
+                (int) $row["stock_actual"];
+        }
+
+        return $map;
+    }
+
+    /**
      * Aplica un delta al saldo del centro dentro de una transaccion.
      *
      * Primero bloquea el producto y luego la fila centro-producto. Todos los

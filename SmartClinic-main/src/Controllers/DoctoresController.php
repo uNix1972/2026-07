@@ -4,6 +4,7 @@ namespace Controllers;
 
 use Dao\ClinicaAvanzada as Clinica;
 use Dao\FacturaVenta as DaoFacturaVenta;
+use Dao\InventarioCentro as DaoInventarioCentro;
 use Dao\MedicoCentroSalud as DaoMedicoCentroSalud;
 use Dao\Producto as DaoProducto;
 use Utilities\AuditLogger;
@@ -146,12 +147,16 @@ class DoctoresController extends PrivateController
         // receta". El precio viaja solo para mostrar una vista previa; al
         // guardar, el servidor vuelve a leerlo del catálogo y no confía en
         // el valor enviado por el navegador.
-        $productosParaReceta = array_map(static function (array $p): array {
+        $stockPorProductoCentro = DaoInventarioCentro::getStockMap();
+        $productosParaReceta = array_map(static function (array $p) use ($stockPorProductoCentro): array {
+            $productoId = (int) $p['id'];
             return [
-                'id' => (int) $p['id'],
+                'id' => $productoId,
                 'nombre' => (string) $p['nombre'],
                 'precio_unitario' => (float) $p['precio_unitario'],
                 'unidad_medida' => (string) $p['unidad_medida'],
+                'stock_por_centro' =>
+                    $stockPorProductoCentro[$productoId] ?? [],
             ];
         }, DaoProducto::getActivos());
         $productosRecetaJsonAttr = htmlspecialchars(
@@ -526,6 +531,84 @@ class DoctoresController extends PrivateController
             );
         }
 
+        // La receta ahora es una lista de líneas (un medicamento por fila,
+        // "+ Agregar medicamento" en el formulario) en vez de un solo campo.
+        // Las líneas de compra se validan antes de guardar el historial: si
+        // la suma solicitada de un producto supera el saldo del centro, no se
+        // persiste todavía ni el historial ni la receta.
+        $medicamentos = is_array($_POST['medicamento'] ?? null) ? $_POST['medicamento'] : [];
+        $indicacionesLineas = is_array($_POST['indicaciones'] ?? null) ? $_POST['indicaciones'] : [];
+        $productoIds = is_array($_POST['producto_id'] ?? null) ? $_POST['producto_id'] : [];
+        $cantidades = is_array($_POST['cantidad'] ?? null) ? $_POST['cantidad'] : [];
+        $comprasAqui = is_array($_POST['comprar_aqui'] ?? null) ? $_POST['comprar_aqui'] : [];
+
+        $lineasVenta = [];
+        $totalesSolicitados = [];
+        $productosVenta = [];
+        foreach ($comprasAqui as $index => $comprarAqui) {
+            if ((int)$comprarAqui !== 1) {
+                continue;
+            }
+
+            $productoId = Validators::sanitizeId($productoIds[$index] ?? 0);
+            if ($productoId === null) {
+                $this->redirectWithMessage(
+                    'Seleccione un producto válido del inventario para cada '
+                    . 'medicamento marcado como compra en la clínica.',
+                    '',
+                    0,
+                    true
+                );
+            }
+            $cantidad = Validators::sanitizeInt($cantidades[$index] ?? 0, 1);
+            if ($cantidad === null) {
+                $this->redirectWithMessage(
+                    'La cantidad de cada producto comprado en la clínica '
+                    . 'debe ser mayor que cero.',
+                    '',
+                    0,
+                    true
+                );
+            }
+            $producto = DaoProducto::getById($productoId);
+            if (!$producto || ($producto['estado'] ?? '') !== 'ACT') {
+                $this->redirectWithMessage(
+                    'Uno de los productos seleccionados ya no está disponible.',
+                    '',
+                    0,
+                    true
+                );
+            }
+
+            $lineasVenta[] = [
+                'producto_id' => $productoId,
+                'cantidad' => $cantidad,
+                'precio_unitario' => (float) $producto['precio_unitario'],
+            ];
+            $totalesSolicitados[$productoId] =
+                ($totalesSolicitados[$productoId] ?? 0) + $cantidad;
+            $productosVenta[$productoId] = $producto;
+        }
+
+        foreach ($totalesSolicitados as $productoId => $cantidadSolicitada) {
+            $disponible = DaoInventarioCentro::getStock(
+                (int)$productoId,
+                (int)$cita['centro_salud_id']
+            );
+            if ($cantidadSolicitada > $disponible) {
+                $producto = $productosVenta[$productoId];
+                $this->redirectWithMessage(
+                    'No se guardó el historial: "' . $producto['nombre']
+                    . '" solicita ' . $cantidadSolicitada
+                    . ' y solo hay ' . $disponible
+                    . ' disponibles en el centro de la cita.',
+                    '',
+                    0,
+                    true
+                );
+            }
+        }
+
         $historialId = Clinica::guardarHistorial(
             $citaId,
             $motivo,
@@ -534,26 +617,10 @@ class DoctoresController extends PrivateController
             $observaciones
         );
 
-        // La receta ahora es una lista de líneas (un medicamento por fila,
-        // "+ Agregar medicamento" en el formulario) en vez de un solo campo.
-        // Cada línea se guarda siempre como receta_medica (es la orden
-        // escrita); si además el médico marcó "el paciente lo compra con
-        // nosotros" y buscó un producto del inventario, esa línea también
-        // entra a $lineasVenta para generar una factura de venta al final.
-        $medicamentos = is_array($_POST['medicamento'] ?? null) ? $_POST['medicamento'] : [];
-        $indicacionesLineas = is_array($_POST['indicaciones'] ?? null) ? $_POST['indicaciones'] : [];
-        $productoIds = is_array($_POST['producto_id'] ?? null) ? $_POST['producto_id'] : [];
-        $cantidades = is_array($_POST['cantidad'] ?? null) ? $_POST['cantidad'] : [];
-        $comprasAqui = is_array($_POST['comprar_aqui'] ?? null) ? $_POST['comprar_aqui'] : [];
-
-        $lineasVenta = [];
         foreach ($medicamentos as $index => $rawMedicamento) {
             $medicamentoLinea = trim((string) $rawMedicamento);
             $indicacionesLinea = trim((string) ($indicacionesLineas[$index] ?? ''));
             if ($medicamentoLinea === '' && $indicacionesLinea === '') {
-                // Fila vacía (el médico le dio "+ Agregar medicamento" pero
-                // no la llenó, o la dejó en blanco al quitar otra): se
-                // ignora en silencio en vez de guardar una receta vacía.
                 continue;
             }
 
@@ -562,32 +629,6 @@ class DoctoresController extends PrivateController
                 $medicamentoLinea !== '' ? $medicamentoLinea : 'Indicaciones generales',
                 $indicacionesLinea !== '' ? $indicacionesLinea : 'Según criterio médico'
             );
-
-            if ((int)($comprasAqui[$index] ?? 0) !== 1) {
-                continue;
-            }
-
-            $productoId = Validators::sanitizeId($productoIds[$index] ?? 0);
-            if ($productoId === null) {
-                // Esta línea no tiene producto elegido: el paciente no la
-                // compra con la clínica, se queda solo como receta escrita.
-                continue;
-            }
-            $cantidad = Validators::sanitizeInt($cantidades[$index] ?? 0, 1);
-            if ($cantidad === null) {
-                continue;
-            }
-            $producto = DaoProducto::getById($productoId);
-            if (!$producto || ($producto['estado'] ?? '') !== 'ACT') {
-                continue;
-            }
-            // El precio se vuelve a leer del catálogo aquí, no se confía en
-            // ningún precio que haya viajado desde el formulario.
-            $lineasVenta[] = [
-                'producto_id' => $productoId,
-                'cantidad' => $cantidad,
-                'precio_unitario' => (float) $producto['precio_unitario'],
-            ];
         }
 
         $mensajeFinal = 'Historial clínico guardado.';
@@ -613,7 +654,10 @@ class DoctoresController extends PrivateController
                 // Se avisa puntualmente en vez de perder todo lo demás.
                 $this->redirectWithMessage(
                     'Historial clínico guardado, pero no se pudo generar la '
-                    . 'venta del medicamento: ' . $e->getMessage()
+                    . 'venta del medicamento: ' . $e->getMessage(),
+                    '',
+                    0,
+                    true
                 );
             }
         }

@@ -141,7 +141,7 @@
           <select id="cita_id" name="cita_id" required>
             {{foreach agendaTodas}}
             {{if puedeFinalizar}}
-            <option value="{{id}}" data-temperatura="{{temperatura}}" data-sistolica="{{presion_sistolica}}" data-diastolica="{{presion_diastolica}}" data-cardiaca="{{frecuencia_cardiaca}}" data-respiratoria="{{frecuencia_respiratoria}}" data-saturacion="{{saturacion_oxigeno}}" data-peso="{{peso}}" data-talla="{{talla}}">#{{id}} · {{fecha_hora}} · {{paciente_nombres}} {{paciente_apellidos}}</option>
+            <option value="{{id}}" data-centro-id="{{centro_salud_id}}" data-temperatura="{{temperatura}}" data-sistolica="{{presion_sistolica}}" data-diastolica="{{presion_diastolica}}" data-cardiaca="{{frecuencia_cardiaca}}" data-respiratoria="{{frecuencia_respiratoria}}" data-saturacion="{{saturacion_oxigeno}}" data-peso="{{peso}}" data-talla="{{talla}}">#{{id}} · {{fecha_hora}} · {{paciente_nombres}} {{paciente_apellidos}}</option>
             {{endif puedeFinalizar}}
             {{endfor agendaTodas}}
           </select>
@@ -192,17 +192,20 @@
               </div>
               <div class="receta-field">
                 <label>Cantidad a vender</label>
-                <input type="number" name="cantidad[]" min="1" placeholder="Ej. 10">
+                <input type="number" name="cantidad[]" min="1" placeholder="Ej. 10" data-cantidad-venta>
+                <small class="receta-stock-disponible" data-stock-disponible>Disponibles: —</small>
               </div>
               <div class="receta-field">
                 <label>Precio unitario</label>
                 <span class="receta-linea__precio" data-precio-preview>—</span>
               </div>
             </div>
+            <p class="receta-stock-error" data-stock-error role="alert" hidden></p>
           </div>
         </div>
+        <div id="receta-stock-alert" class="receta-stock-alert" role="alert" hidden>Corrija las cantidades resaltadas antes de guardar el historial.</div>
         <button type="button" id="btn-agregar-receta-linea" class="btn btn--outline" style="margin:10px 0 18px;">+ Agregar medicamento</button>
-        <button type="submit" class="btn btn--primary">Guardar historial</button>
+        <button type="submit" id="btn-guardar-historial" class="btn btn--primary">Guardar historial</button>
       </form>
   </section>
 
@@ -281,6 +284,12 @@
     border-left-color: #075fc7;
     box-shadow: 0 8px 22px rgba(23, 52, 94, 0.08);
   }
+  .receta-linea.receta-linea--stock-error {
+    border-color: #dc2626;
+    border-left-color: #dc2626;
+    background: #fff7f7;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, .1);
+  }
   .receta-linea__remove { position: absolute; top: 14px; right: 14px; margin-top: 0; width: 34px; height: 34px; font-size: 1.25rem; }
   .receta-field { display: grid; min-width: 0; gap: 6px; }
   .receta-field label { color: #34445d; font-size: .78rem; font-weight: 800; }
@@ -324,6 +333,37 @@
     background: #eef2f7;
     color: #34445d;
     font-weight: 700;
+  }
+  .receta-stock-disponible {
+    color: #475569;
+    font-size: .8rem;
+    font-weight: 700;
+  }
+  .receta-stock-error {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #991b1b;
+    font-size: .86rem;
+    font-weight: 800;
+  }
+  .receta-stock-error[hidden],
+  .receta-stock-alert[hidden] { display: none; }
+  .receta-stock-alert {
+    margin: 10px 0 12px;
+    padding: 12px 14px;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #991b1b;
+    font-weight: 800;
+  }
+  #btn-guardar-historial:disabled {
+    cursor: not-allowed;
+    opacity: .55;
+    filter: grayscale(.25);
   }
   .receta-linea__compra .sc-combo { position: relative; }
   .receta-linea__compra .sc-combo-results {
@@ -508,6 +548,10 @@ document.addEventListener('DOMContentLoaded', function () {
   if (!body || !btnAgregar) {
     return;
   }
+  var form = body.closest('form');
+  var citaSelect = document.getElementById('cita_id');
+  var btnGuardar = document.getElementById('btn-guardar-historial');
+  var stockAlert = document.getElementById('receta-stock-alert');
   var plantillaFila = body.querySelector('.receta-linea').cloneNode(true);
 
   function formatearPrecio(precio) {
@@ -519,6 +563,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function actualizarProductoSeleccionado(fila, producto) {
+    fila._productoSeleccionado = producto || null;
     var precioPreview = fila.querySelector('[data-precio-preview]');
     if (!precioPreview) {
       return;
@@ -531,6 +576,124 @@ document.addEventListener('DOMContentLoaded', function () {
     if (producto && medicamento && medicamento.value.trim() === '') {
       medicamento.value = producto.nombre || '';
     }
+  }
+
+  function centroSeleccionado() {
+    if (!citaSelect || citaSelect.selectedIndex < 0) {
+      return '';
+    }
+    var opcion = citaSelect.options[citaSelect.selectedIndex];
+    return opcion ? String(opcion.getAttribute('data-centro-id') || '') : '';
+  }
+
+  function stockDelProducto(producto, centroId) {
+    if (!producto || !producto.stock_por_centro || !centroId) {
+      return 0;
+    }
+    var stock = parseInt(producto.stock_por_centro[centroId] || 0, 10);
+    return isNaN(stock) ? 0 : stock;
+  }
+
+  function limpiarEstadoStock(fila) {
+    fila.classList.remove('receta-linea--stock-error');
+    var cantidad = fila.querySelector('[data-cantidad-venta]');
+    var error = fila.querySelector('[data-stock-error]');
+    if (cantidad) cantidad.removeAttribute('aria-invalid');
+    if (error) {
+      error.hidden = true;
+      error.textContent = '';
+    }
+  }
+
+  function validarStockReceta() {
+    var centroId = centroSeleccionado();
+    var filas = Array.prototype.slice.call(
+      body.querySelectorAll('.receta-linea')
+    );
+    var solicitudes = {};
+    var hayCamposPendientes = false;
+    var hayExceso = false;
+
+    filas.forEach(function (fila) {
+      limpiarEstadoStock(fila);
+      var checkbox = fila.querySelector('.chk-comprar-aqui');
+      var productoIdInput = fila.querySelector('[data-sc-combo-hidden]');
+      var cantidadInput = fila.querySelector('[data-cantidad-venta]');
+      var disponibleTexto = fila.querySelector('[data-stock-disponible]');
+      if (!checkbox || !checkbox.checked) {
+        if (disponibleTexto) disponibleTexto.textContent = 'Disponibles: —';
+        return;
+      }
+
+      var producto = fila._productoSeleccionado || null;
+      var productoId = productoIdInput ? String(productoIdInput.value || '') : '';
+      if (!producto || !productoId || String(producto.id) !== productoId) {
+        hayCamposPendientes = true;
+        if (disponibleTexto) {
+          disponibleTexto.textContent = 'Seleccione un producto para consultar existencias.';
+        }
+        return;
+      }
+
+      var disponible = stockDelProducto(producto, centroId);
+      var unidad = String(producto.unidad_medida || 'unidad');
+      if (disponibleTexto) {
+        disponibleTexto.textContent =
+          'Disponibles en este centro: ' + disponible + ' ' + unidad + '(s).';
+      }
+
+      var cantidad = cantidadInput
+        ? parseInt(cantidadInput.value || '0', 10)
+        : 0;
+      if (!cantidad || cantidad < 1) {
+        hayCamposPendientes = true;
+        return;
+      }
+
+      if (!solicitudes[productoId]) {
+        solicitudes[productoId] = {
+          total: 0,
+          disponible: disponible,
+          nombre: String(producto.nombre || 'Producto'),
+          filas: []
+        };
+      }
+      solicitudes[productoId].total += cantidad;
+      solicitudes[productoId].filas.push(fila);
+    });
+
+    Object.keys(solicitudes).forEach(function (productoId) {
+      var solicitud = solicitudes[productoId];
+      if (solicitud.total <= solicitud.disponible) {
+        return;
+      }
+      hayExceso = true;
+      solicitud.filas.forEach(function (fila) {
+        fila.classList.add('receta-linea--stock-error');
+        var cantidad = fila.querySelector('[data-cantidad-venta]');
+        var error = fila.querySelector('[data-stock-error]');
+        if (cantidad) cantidad.setAttribute('aria-invalid', 'true');
+        if (error) {
+          error.hidden = false;
+          error.textContent =
+            'Existencia insuficiente: esta receta solicita '
+            + solicitud.total + ' de "' + solicitud.nombre
+            + '", pero solo hay ' + solicitud.disponible
+            + ' en el centro de la cita.';
+        }
+      });
+    });
+
+    if (btnGuardar) {
+      btnGuardar.disabled = hayCamposPendientes || hayExceso;
+      btnGuardar.title = hayExceso
+        ? 'Corrija las cantidades que superan la existencia disponible.'
+        : '';
+    }
+    if (stockAlert) {
+      stockAlert.hidden = !hayExceso;
+    }
+    return !hayCamposPendientes && !hayExceso;
   }
 
   function limpiarCompra(fila) {
@@ -569,16 +732,23 @@ document.addEventListener('DOMContentLoaded', function () {
         } else if (buscador) {
           buscador.focus();
         }
+        validarStockReceta();
       });
     }
 
     if (combo) {
       combo.addEventListener('sc-combo:select', function (event) {
         actualizarProductoSeleccionado(fila, event.detail || null);
+        validarStockReceta();
       });
       combo.addEventListener('sc-combo:clear', function () {
         actualizarProductoSeleccionado(fila, null);
+        validarStockReceta();
       });
+    }
+
+    if (cantidad) {
+      cantidad.addEventListener('input', validarStockReceta);
     }
 
     if (removeBtn) {
@@ -588,11 +758,23 @@ document.addEventListener('DOMContentLoaded', function () {
          * médico no indica ningún medicamento.
          */
         fila.remove();
+        validarStockReceta();
       });
     }
   }
 
   document.querySelectorAll('.receta-linea').forEach(wireFila);
+  citaSelect && citaSelect.addEventListener('change', validarStockReceta);
+  form && form.addEventListener('submit', function (event) {
+    if (!validarStockReceta()) {
+      event.preventDefault();
+      var primeraConError = body.querySelector(
+        '.receta-linea--stock-error [data-cantidad-venta]'
+      );
+      if (primeraConError) primeraConError.focus();
+    }
+  });
+  validarStockReceta();
 
   btnAgregar.addEventListener('click', function () {
     var clon = plantillaFila.cloneNode(true);
@@ -625,6 +807,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (combo && window.ScComboWidget) {
       window.ScComboWidget.inicializar(combo);
     }
+    validarStockReceta();
   });
 });
 </script>

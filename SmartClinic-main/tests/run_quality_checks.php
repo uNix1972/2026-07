@@ -675,6 +675,26 @@ check(
     'venta por receta descuenta stock del centro y total atómicamente'
 );
 check(
+    strpos($centerInventoryDao, 'getStockMap') !== false
+        && strpos($doctorController, "'stock_por_centro'") !== false
+        && strpos($doctorPortalView, 'data-centro-id=') !== false,
+    'receta recibe existencias por producto y centro'
+);
+check(
+    strpos($doctorPortalView, 'receta-linea--stock-error') !== false
+        && strpos($doctorPortalView, 'data-stock-disponible') !== false
+        && strpos($doctorPortalView, 'btnGuardar.disabled') !== false
+        && strpos($doctorPortalView, 'solicitud.total') !== false,
+    'receta resalta excesos combinados y bloquea guardar historial'
+);
+check(
+    strpos($doctorController, 'DaoInventarioCentro::getStock') !== false
+        && strpos($doctorController, 'No se guardó el historial:') !== false
+        && strpos($doctorController, 'DaoInventarioCentro::getStock')
+            < strpos($doctorController, 'Clinica::guardarHistorial'),
+    'servidor valida existencias antes de guardar historial'
+);
+check(
     strpos($movementDao, 'FROM factura_venta_detalle') !== false
         && strpos($movementDao, "'VENTA'") !== false
         && strpos($movementDao, "'SALIDA'") !== false,

@@ -365,7 +365,8 @@
     font-weight: 600;
   }
   .calendar-day-number {
-    font-weight: 600;
+    font-size: clamp(0.8rem, 1.35vw, 1.05rem);
+    font-weight: 700;
     line-height: 1;
   }
   .calendar-events {
