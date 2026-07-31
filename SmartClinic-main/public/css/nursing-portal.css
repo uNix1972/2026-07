@@ -302,6 +302,15 @@
   font-size: .72rem;
 }
 
+.nursing-patient .nursing-patient__avatar {
+  display: grid;
+  place-items: center;
+  margin-top: 0;
+  border: 1px solid #bfd5ff;
+  color: #0345c5;
+  background: #eaf2ff;
+}
+
 .nursing-status {
   display: inline-flex;
   align-items: center;
@@ -350,11 +359,28 @@
   margin: 0;
 }
 
-.nursing-arrival-button {
-  min-height: 34px;
-  padding: 7px 11px;
-  font-size: .74rem;
+.nursing-action-link {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0345c5;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 800;
+  line-height: 1.4;
+  text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.nursing-action-link:hover {
+  text-decoration: underline;
+}
+
+.nursing-action-link:focus-visible {
+  outline: 2px solid #0f6fdc;
+  outline-offset: 3px;
 }
 
 .nursing-status-stack {

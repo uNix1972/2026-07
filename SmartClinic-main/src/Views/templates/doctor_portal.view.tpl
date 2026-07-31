@@ -180,6 +180,7 @@
             <label class="receta-linea__check">
               <input type="checkbox" class="chk-comprar-aqui"> El paciente lo compra con nosotros
             </label>
+            <input type="hidden" name="comprar_aqui[]" value="0" data-compra-flag>
             <div class="receta-linea__compra" hidden>
               <div class="receta-field">
                 <label>Buscar producto en inventario</label>
@@ -550,6 +551,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function wireFila(fila) {
     var checkbox = fila.querySelector('.chk-comprar-aqui');
+    var compraFlag = fila.querySelector('[data-compra-flag]');
     var bloqueCompra = fila.querySelector('.receta-linea__compra');
     var combo = fila.querySelector('[data-receta-producto-combo]');
     var buscador = combo ? combo.querySelector('[data-sc-combo-input]') : null;
@@ -559,6 +561,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (checkbox && bloqueCompra) {
       checkbox.addEventListener('change', function () {
         bloqueCompra.hidden = !checkbox.checked;
+        if (compraFlag) compraFlag.value = checkbox.checked ? '1' : '0';
         if (buscador) buscador.required = checkbox.checked;
         if (cantidad) cantidad.required = checkbox.checked;
         if (!checkbox.checked) {
@@ -599,6 +602,8 @@ document.addEventListener('DOMContentLoaded', function () {
     clon.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
       input.checked = false;
     });
+    var compraFlag = clon.querySelector('[data-compra-flag]');
+    if (compraFlag) compraFlag.value = '0';
     var productoId = clon.querySelector('[data-sc-combo-hidden]');
     if (productoId) productoId.value = '';
     var resultados = clon.querySelector('[data-sc-combo-results]');

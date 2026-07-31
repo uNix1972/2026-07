@@ -48,7 +48,7 @@ class EnfermeriaPortalController extends PrivateController
 
     private function index(): void
     {
-        Site::addLink("public/css/nursing-portal.css?v=20260730-2");
+        Site::addLink("public/css/nursing-portal.css?v=20260730-3");
 
         $usuarioId = (int) Security::getUserId();
         $enfermera = DaoEnfermeriaPortal::getEnfermeraByUsuario($usuarioId);
@@ -224,7 +224,7 @@ class EnfermeriaPortalController extends PrivateController
             exit("Método no permitido.");
         }
 
-        Site::addLink("public/css/nursing-portal.css?v=20260730-2");
+        Site::addLink("public/css/nursing-portal.css?v=20260730-3");
         $usuarioId = (int) Security::getUserId();
         if (!Security::isAuthorized(
             $usuarioId,

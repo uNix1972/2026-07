@@ -162,11 +162,11 @@
               <form method="POST" action="index.php?page=EnfermeriaPortalController&action=confirmarLlegada" class="nursing-arrival-form" data-confirm="¿Confirma que el paciente ya llegó al centro de salud?">
                 <input type="hidden" name="csrf_token" value="{{~csrf_token}}">
                 <input type="hidden" name="cita_id" value="{{id}}">
-                <button type="submit" class="btn btn--primary nursing-arrival-button">Confirmar llegada</button>
+                <button type="submit" class="nursing-action-link">Confirmar llegada</button>
               </form>
               {{endif puedeConfirmarLlegada}}
               {{if puedeRegistrarPreclinica}}
-              <a href="index.php?page=EnfermeriaPortalController&action=preclinica&cita_id={{id}}" class="btn btn--primary nursing-arrival-button">{{preclinica_accion}}</a>
+              <a href="index.php?page=EnfermeriaPortalController&action=preclinica&cita_id={{id}}" class="nursing-action-link">{{preclinica_accion}}</a>
               {{endif puedeRegistrarPreclinica}}
               {{ifnot tieneAccion}}
               <span class="nursing-action-state">{{accion_estado}}</span>

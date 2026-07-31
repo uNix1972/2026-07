@@ -637,6 +637,8 @@ $adjustmentDao = file_get_contents(__DIR__ . '/../src/Dao/AjusteInventario.php')
 $centerInventoryDao = file_get_contents(__DIR__ . '/../src/Dao/InventarioCentro.php');
 $movementDao = file_get_contents(__DIR__ . '/../src/Dao/MovimientoInventario.php');
 $purchaseDao = file_get_contents(__DIR__ . '/../src/Dao/FacturaCompra.php');
+$salesDao = file_get_contents(__DIR__ . '/../src/Dao/FacturaVenta.php');
+$salesMigration = file_get_contents(__DIR__ . '/../scripts/migrate_factura_venta.sql');
 $purchaseController = file_get_contents(__DIR__ . '/../src/Controllers/ComprasController.php');
 $adjustmentView = file_get_contents(__DIR__ . '/../src/Views/templates/inventario_ajustar.view.tpl');
 $inventoryView = file_get_contents(__DIR__ . '/../src/Views/templates/inventario.view.tpl');
@@ -656,6 +658,28 @@ check(strpos($adjustmentDao, 'InventarioCentro::ajustarStock') !== false, 'ajust
 check(strpos($adjustmentDao, 'centro_salud_id') !== false, 'DAO de ajustes persiste el centro de salud');
 check(strpos($movementDao, 'cs.nombre') !== false, 'movimientos devuelven el centro del ajuste');
 check(strpos($movementDao, 'fc.centro_salud_id') !== false, 'movimientos de compra conservan su centro');
+check(
+    strpos($doctorPortalView, 'name="comprar_aqui[]"') !== false
+        && strpos($doctorController, '$_POST[\'comprar_aqui\']') !== false,
+    'venta de receta exige selección explícita del médico'
+);
+check(
+    strpos($salesMigration, 'CREATE TABLE IF NOT EXISTS factura_venta') !== false
+        && strpos($salesMigration, 'CREATE TABLE IF NOT EXISTS factura_venta_detalle') !== false,
+    'migración idempotente de ventas por receta presente'
+);
+check(
+    strpos($salesDao, 'InventarioCentro::ajustarStock') !== false
+        && strpos($salesDao, 'Producto::ajustarStock') !== false
+        && strpos($salesDao, 'beginTransaction') !== false,
+    'venta por receta descuenta stock del centro y total atómicamente'
+);
+check(
+    strpos($movementDao, 'FROM factura_venta_detalle') !== false
+        && strpos($movementDao, "'VENTA'") !== false
+        && strpos($movementDao, "'SALIDA'") !== false,
+    'kárdex incluye ventas por receta como salidas'
+);
 check(strpos($movementDao, "'Inventario general'") === false, 'ya no existen compras de inventario general');
 check(strpos($purchaseDao, 'InventarioCentro::ajustarStock') !== false, 'compras actualizan el saldo por centro');
 check(strpos($purchaseController, 'centro_salud_id') !== false, 'controlador de compras valida centro de destino');

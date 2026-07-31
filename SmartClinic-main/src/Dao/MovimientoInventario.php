@@ -6,7 +6,7 @@ namespace Dao;
  * ------------------------
  * PROBLEMA QUE RESUELVE ESTA CLASE:
  *
- * En el sistema existen dos formas de que el stock de un producto cambie:
+ * En el sistema existen tres formas de que el stock de un producto cambie:
  *
  *   1) Ajustes manuales (InventarioController::ajustar) -> se guardan en la
  *      tabla `ajuste_inventario` con tipo_ajuste ENTRADA o SALIDA y el centro
@@ -16,12 +16,16 @@ namespace Dao;
  *      destino vive en `factura_compra` y cada producto comprado se obtiene
  *      de `factura_compra_detalle`.
  *
- * Es decir: hoy existen dos fuentes de verdad separadas para los
+ *   3) Ventas desde una receta médica (DoctoresController::guardarHistorial)
+ *      -> cada producto vendido se guarda en `factura_venta_detalle` y sale
+ *      del centro donde ocurrió la consulta.
+ *
+ * Es decir: hoy existen tres fuentes de verdad separadas para los
  * movimientos de inventario. Si el Kárdex solo leyera `ajuste_inventario`,
  * las entradas por compra serían invisibles y el kárdex no cuadraría con
  * el stock_actual real del producto.
  *
- * Esta clase une ambas fuentes con UNION ALL y expone una sola lista de
+ * Esta clase une las tres fuentes con UNION ALL y expone una sola lista de
  * movimientos. Como las dos fuentes tienen centro, el Kardex puede reconstruir
  * el saldo real de una ubicacion sin mezclar existencias de otras sedes.
  */
@@ -29,7 +33,7 @@ class MovimientoInventario extends Table
 {
     /**
      * Devuelve el historial de movimientos de inventario (entradas y
-     * salidas), combinando ajustes manuales y compras a proveedor.
+     * salidas), combinando ajustes manuales, compras y ventas por receta.
      *
      * Columnas que devuelve cada fila:
      *   - fecha            (DATETIME)  cuándo ocurrió el movimiento
@@ -37,8 +41,8 @@ class MovimientoInventario extends Table
      *   - producto_nombre   (VARCHAR)
      *   - tipo_movimiento   ('ENTRADA' | 'SALIDA')
      *   - cantidad          (INT)       siempre positiva; el signo lo da tipo_movimiento
-     *   - origen            ('AJUSTE' | 'COMPRA')  de dónde vino el movimiento
-     *   - referencia        (VARCHAR)   motivo del ajuste, o "Factura FC-0001 - Proveedor X" si es compra
+     *   - origen            ('AJUSTE' | 'COMPRA' | 'VENTA') de dónde vino el movimiento
+     *   - referencia        (VARCHAR) motivo del ajuste o número de factura
      *   - usuario_id        (INT|NULL)
      *   - usuario_nombre    (VARCHAR)   quién registró el movimiento, o "Sistema" si no se guardó usuario
      *   - centro_salud_id   (INT)        ubicacion del movimiento
@@ -115,12 +119,44 @@ class MovimientoInventario extends Table
               AND (:centro_salud_id_2 IS NULL OR fc.centro_salud_id = :centro_salud_id_2)
         ";
 
-        // --- Unión de ambas fuentes --------------------------------------------------------
+        // --- Bloque 3: ventas de medicamentos desde receta -------------------------------
+        // Cada detalle representa una salida del centro donde se atendió la
+        // cita. La venta y el descuento de stock se guardan en una sola
+        // transacción, por lo que este movimiento siempre corresponde al
+        // saldo operativo persistido.
+        $sqlVentas = "
+            SELECT
+                fv.fecha_venta                                              AS fecha,
+                fvd.producto_id                                             AS producto_id,
+                p.nombre                                                    AS producto_nombre,
+                'SALIDA'                                                    AS tipo_movimiento,
+                fvd.cantidad                                                AS cantidad,
+                'VENTA'                                                     AS origen,
+                CONCAT('Factura ', fv.numero_factura, ' - Receta médica')   AS referencia,
+                fv.usuario_id                                               AS usuario_id,
+                COALESCE(u3.username, 'Sistema')                            AS usuario_nombre,
+                fv.centro_salud_id                                          AS centro_salud_id,
+                cs3.nombre                                                  AS centro_nombre
+            FROM factura_venta_detalle fvd
+            JOIN factura_venta fv ON fv.id = fvd.factura_venta_id
+            JOIN producto p ON p.id = fvd.producto_id
+            JOIN centro_salud cs3 ON cs3.id = fv.centro_salud_id
+            LEFT JOIN usuario u3 ON u3.usercod = fv.usuario_id
+            WHERE (:producto_id_3 IS NULL OR fvd.producto_id = :producto_id_3)
+              AND (:fecha_inicio_3 IS NULL OR fv.fecha_venta >= :fecha_inicio_3)
+              AND (:fecha_fin_3 IS NULL OR fv.fecha_venta < DATE_ADD(:fecha_fin_3, INTERVAL 1 DAY))
+              AND (:centro_salud_id_3 IS NULL OR fv.centro_salud_id = :centro_salud_id_3)
+        ";
+
+        // --- Unión de las tres fuentes ----------------------------------------------------
         // UNION ALL (no UNION) a propósito: no queremos que MySQL elimine
         // "duplicados", cada movimiento es un evento independiente aunque
         // dos filas tengan exactamente los mismos valores.
         $orden = strtoupper($orden) === 'DESC' ? 'DESC' : 'ASC';
-        $sql = "($sqlAjustes) UNION ALL ($sqlCompras) ORDER BY fecha $orden, producto_id $orden";
+        $sql = "($sqlAjustes)
+                UNION ALL ($sqlCompras)
+                UNION ALL ($sqlVentas)
+                ORDER BY fecha $orden, producto_id $orden";
 
         // Los parámetros con nombre se repiten (uno por cada mitad del UNION)
         // porque cada SELECT se prepara y ejecuta como parte de una sola
@@ -135,6 +171,10 @@ class MovimientoInventario extends Table
             "fecha_inicio_2" => $fechaInicio,
             "fecha_fin_2"    => $fechaFin,
             "centro_salud_id_2" => $centroSaludId,
+            "producto_id_3"  => $productoId,
+            "fecha_inicio_3" => $fechaInicio,
+            "fecha_fin_3"    => $fechaFin,
+            "centro_salud_id_3" => $centroSaludId,
         ];
 
         return parent::obtenerRegistros($sql, $params);
@@ -145,8 +185,8 @@ class MovimientoInventario extends Table
      * (running balance) de cada producto a lo largo del tiempo.
      *
      * IMPORTANTE: como Producto::insert() siempre arranca stock_actual en 0,
-     * y desde ese momento el único modo de moverlo es vía ajuste manual o
-     * compra (ambos ya cubiertos por getMovimientos), el saldo acumulado
+     * y desde ese momento solo se mueve mediante ajustes, compras o ventas
+     * (todos cubiertos por getMovimientos), el saldo acumulado
      * que calculamos aquí, recorriendo TODO el historial desde el inicio,
      * debe coincidir exactamente con producto.stock_actual al llegar a la
      * fila más reciente. Esa coincidencia es justamente la forma de
@@ -209,7 +249,7 @@ class MovimientoInventario extends Table
     /**
      * Reconstruye el stock que tenía CADA producto al final de un día
      * específico ("inventario histórico"), sumando y restando en orden
-     * cronológico todos los movimientos (ajustes + compras) ocurridos
+     * cronológico todos los movimientos (ajustes + compras + ventas) ocurridos
      * hasta esa fecha inclusive. Es la misma idea del saldo acumulado que
      * ya usa el Kárdex, solo que aquí se calcula para todos los productos
      * de una sola pasada en vez de uno a la vez.
@@ -250,7 +290,7 @@ class MovimientoInventario extends Table
     }
 
     /**
-     * Devuelve los últimos $limit movimientos (ajustes + compras), del más
+     * Devuelve los últimos $limit movimientos (ajustes + compras + ventas), del más
      * reciente al más antiguo. Pensado para widgets tipo "Movimientos
      * recientes" en pantallas de resumen, donde no hace falta el saldo
      * acumulado (eso es lo que sí calcula getMovimientosConSaldo, pensado

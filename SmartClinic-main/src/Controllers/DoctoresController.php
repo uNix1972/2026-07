@@ -544,6 +544,7 @@ class DoctoresController extends PrivateController
         $indicacionesLineas = is_array($_POST['indicaciones'] ?? null) ? $_POST['indicaciones'] : [];
         $productoIds = is_array($_POST['producto_id'] ?? null) ? $_POST['producto_id'] : [];
         $cantidades = is_array($_POST['cantidad'] ?? null) ? $_POST['cantidad'] : [];
+        $comprasAqui = is_array($_POST['comprar_aqui'] ?? null) ? $_POST['comprar_aqui'] : [];
 
         $lineasVenta = [];
         foreach ($medicamentos as $index => $rawMedicamento) {
@@ -561,6 +562,10 @@ class DoctoresController extends PrivateController
                 $medicamentoLinea !== '' ? $medicamentoLinea : 'Indicaciones generales',
                 $indicacionesLinea !== '' ? $indicacionesLinea : 'Según criterio médico'
             );
+
+            if ((int)($comprasAqui[$index] ?? 0) !== 1) {
+                continue;
+            }
 
             $productoId = Validators::sanitizeId($productoIds[$index] ?? 0);
             if ($productoId === null) {
